@@ -1,0 +1,318 @@
+
+**WIP**
+
+* NOTES
+
+  * I move the orignal repo https://github.com/leandroohf/circleci_howto to https://github.com/leandroohf/mlops/circleci_howto
+  * If facing problem with circleci, better run form the original repo.
+
+* Motivation
+
+  CircleCI is the main tool for continues integration/development (CI/CD), It
+  provides an enviroment with set of tools to automatic build and deploy
+  projects. This simplify the work of devops/mlops or machine learning engineer.
+  Many ML pipelines are built using CircleCI.
+
+  In this project we cover the main features I have being using in CircleCI for
+  ML pipelines. This is the 80%/20% ruleof it:
+
+  1. define jobs, workflows and executors
+  2. work with environment variable
+  3. work with orbs (So you dont have start from zero)
+  4. work with docker images and use docker layer caching (DLC)
+  5. how to store and share model artifacts between jobs
+  6. context and secrets and notify slack channel on errors
+  7. split the pipeline on dev and prod enviroment
+
+  For full pipeline example see file .circleci/config.yaml
+
+* CircleCI main terms
+** Jobs:
+
+   A job is a single unit of work in a workflow. Job is set of commands that you
+   give a name and run in a specific environment. All the commands defined in a
+   job are executed when it is mentioned in a workflow.
+
+   Circleci has common built-in commands like `checkout` and `run`. The
+   `checkout` command is used to clone the repository and the `run` command is
+   used to run a shell command.
+
+   This is the main structure of a job:
+   - job_name:
+   - parameters: define parameters for the job that can be used in the job's commands
+   - executor: define the environment in which the job runs: docker container, machine, etc.
+   - run: defines the steps and commands
+
+   Jobs can be defined in the `jobs` section of the configuration file. Jobs can
+   receive parameters, the same job can be executed multiple time in the
+   workflows with different parameters. This add flexibility to the pipeline and
+   prevent code duplication.
+
+   #+BEGIN_SRC yaml
+   jobs:
+     job-name: # Give the job a name
+       parameters:  # Define parameters that can be used in the job's commands (Optional)
+         param_name:
+           type: string
+           default: "default_value"
+       docker:  # Execution environment (can also be 'machine' or 'macos')
+         - image: circleci/python:3.9
+       resource_class: medium  # Defines CPU/RAM allocation (Optional)
+       environment:  # Define environment variables
+         ENV_VAR_NAME: "value"
+       steps:  # Define the steps of the job
+         - checkout  # Pulls the code from the repository
+         - run: # step 1
+             name: Step description  # Name for readability
+             command: echo "Hello, CircleCI!"  # Command to execute
+         - run: # step 2
+             name: Build Docker image
+             command: docker build -t my-app .
+   #+END_SRC
+
+    For instance, you can define the Job called `show-repo-and-python-version`:
+
+    #+BEGIN_SRC yaml
+    jobs:
+      show-repo-and-python-version:
+        parameters:
+          repo_name:
+            type: string
+            default: "default_value"
+        docker:
+          - image: circleci/python:3.7
+        steps:
+          - checkout
+          - run: |
+              echo "Repository: ${{ parameters.repo_name }}"
+              echo "Python version: $(python --version)"
+    #+END_SRC
+
+    See workflow section for how to run the job `show-repo-and-python-version` in a workflow.
+
+** Workflows:
+
+   A workflow is a collection of jobs that are run in a specific order.
+   Workflows define execution order and jobs that are run in parallel or
+   sequentially. For instance, you can define the workflow called
+   `show-repo-and-python-version`:
+
+   #+BEGIN_SRC yaml
+   workflows:
+     version: 2
+     hellow-workflow:
+       jobs:
+         - show-repo-and-python-version: # runs in parallel with job2
+             name: job1 name
+             repo_name: "new repo name"  # <= Pass the parameter to the job. replace default value
+         - job2: # runs in parallel with show-repo-and-python-version (job1)
+             name: job2 name
+             run: echo "job2"
+         - job3: # runs after job1 and job2
+             name: job3 name
+             require:
+               - show-repo-and-python-version
+               - job2
+             run: echo "job3"
+   #+END_SRC
+
+** Orbs:
+
+   Orbs are reusable packages of CircleCI configuration that can be shared
+   across projects. Orbs are commonly used to simplify configuration instead
+   build all from scratch. For instance there are orbs for slack that allows you
+   to send messages to slack channels instead of you build all the commands to
+   accomplish the same task. Below is an list of popular orbs:
+
+    1. hello: A simple orb that echoes a message
+    2. slack and sendgrid: Send messages to slack channels and emails
+    3. aws-eks and aws-ecr: Deploy to AWS EKS and AWS ECR
+    4. circleci-gcp-auth: Authenticate with Google Cloud Platform
+    5. helm and kubernetes: Deploy to Kubernetes using Helm
+    6. datadog-static-analysis,codecov and sonarcloud: Run static analysis with Datadog
+
+* How to set circleci
+
+  1. Create a `.circleci` folder in the root of your project
+
+  2. Create a `config.yml` file inside the `.circleci` folder
+
+  3. Go to https://circleci.com/vcs-authorize ()Assume you account is already created
+
+      a) Click Login -> Signed up for CircleCI with GitHub or  Bitbucket before September 2023? -> Loging with Github
+      b) Top left drop down menu: Select your organization or your personal Githib account
+      c) Projects -> Click circleci_howto
+      d) Project Settings:
+          - Environment Variables: Add the environment variables you need for your project
+          - Contexts: Add the context you need for your project
+          - Secrets: Add the secrets you need for your project
+          - triggers
+
+   This is the picture of the pipeline defined by the file ./circleci/config.yml
+
+   * [[./images/circleci_pipeline.png][circleci pipeline]]
+
+* How to work with docker and docker layer caching
+
+  The job example below summarize the main steps to work with docker images and docker layer caching:
+
+  #+BEGIN_SRC yaml
+  jobs:
+    build:
+      docker: # <= Use a Docker image as an executor 
+        - image: circleci/python:3.7 # <= Use the Python 3.7 image
+      steps:
+        - checkout
+        - setup_remote_docker:
+            docker_layer_caching: true # <= Enable Docker layer caching (Making build image faster)
+        - run:
+            name: Build Docker image
+            command: docker build -t my-app .
+        - run:
+            name: Run Docker container
+            command: docker run my-app
+  #+END_SRC
+
+* How to store and share model artifacts between jobs
+
+   The job example below summarize the main steps to store and share model artifacts between jobs:
+
+   #+BEGIN_SRC yaml
+   jobs:
+     build:
+       docker:
+         - image: circleci/python:3.7
+       steps:
+         - checkout
+         - run:
+             name: Train model
+             command: python train.py
+         - persist_to_workspace: # <= Store the model artifact in the workspace
+             root: /path/to/model
+             paths:
+               - model.pkl
+     deploy:
+       docker:
+         - image: circleci/python:3.7
+       steps:
+         - checkout
+         - attach_workspace: # <= Attach the workspace to access the model artifact
+             at: /path/to/model
+         - run:
+             name: Deploy model
+             command: python deploy.py
+   #+END_SRC
+
+* How to work with secrets and context and send slack messages
+
+  Context and secrets are used to store sensitive information like API keys, passwords, etc. Contexts are used to store environment variables
+  and secrets are used to store sensitive information. Below is an example of how to use context and secrets:
+
+    * slacks (2 steps): https://github.com/CircleCI-Public/slack-orb/wiki/Setup
+        1. setup authentication: https://api.slack.com/apps
+            1. choose a name
+            2. select workspace
+            3. Add scopes under Auth n Permissions
+                1. chat:write  Post to Slack (bot must be invited to channel)
+                2. chat:write.public Post to any channel
+            4. Install App into the Workspace
+
+                See images as reference:
+                * [[./images/slack_app_page.png][slack app page]]
+                * [[./images/circleci_slack_app.png][circleci slack app]]
+
+            5. test notification app
+
+           #+begin_src sh
+             curl -X POST -H 'Authorization: Bearer YOUR-TOKEN' -H 'Content-type: application/json' \
+                  --data '{"channel":"#circleci","text":"Hello from CircleCI!"}' \
+                  https://slack.com/api/chat.postMessage
+           #+end_src
+
+    * Set context circle
+        1. circleci projects -> Project Settings -> Organize Project
+        2. context (left side tab) -> create context
+        3. Add context: slack-context
+                1. SLACK_ACCESS_TOKEN=copy and from slack app
+                2. SLACK_DEFAULT_CHANNEL=#circleci  (<= name of the slack channel)
+
+        See images as reference:
+        * [[./images/projec_contexts_page.png][project context page]]
+        * [[./images/slack_context.png][slack context page]]
+
+    * change code in config.yml
+
+    #+BEGIN_SRC yaml
+    version: 2.1
+    orbs:
+      slack: circleci/slack@4.12.5
+
+    workflows:
+      version: 2
+      build-and-deploy:
+        jobs:
+          - build
+          - deploy
+          - slack/notify:
+              channel: #circleci
+              event: fail  # <= Send a message when the build fails. allowed values: fail, success, fixed, canceled
+              mentions: "@channel"  # <= Mention a user or channel
+              message: "The build failed"
+    #+END_SRC
+
+* Work with dev and qa enviroment
+
+   The best practices ML pipelines should have dev, qa and prod enviroments.
+   These enviroments has different paswords and permissions and protect and
+   organize your ML project.
+
+   As simplification the circleci below defines only dev and qa. You need to
+   manuall approve to deploy on qa after dev is deployed. Dev and QA have
+   different context on circleci project with different pernissions and secrets.
+   Best practices, ML models is deployed after all tests: unit tests integration
+   tests and validation test (Is the model performance right?) passes.
+
+   #+BEGIN_SRC yaml
+     version: 2.1
+
+     jobs:
+       deploy:
+         docker:
+           - image: circleci/python:3.9  # Use a Python Docker image
+         parameters:
+           env: # A parameter to control the environment
+             type: string
+             default: "dev" # Default to dev
+         steps:
+           - run:
+               name: deploying
+               command: echo "deploying"
+           - run:       # <== circleci do not print var contents on context.
+               name: greeting
+               command: echo $GREETING
+
+
+     workflows:
+       version: 2
+       build-and-deploy:
+         jobs:
+           - build:
+               name: Build project
+               run: echo "building"
+           - deploy:
+               name: Deploy project on Dev
+               context: dev-context
+               requires:
+                 - Build project
+           - approval:
+               type: approval
+               name: Approve Deploy to QA
+               requires:
+                 - Deploy project on Dev
+           - deploy:
+               name: Deploy project on Qa
+               context: qa-context
+               requires:
+                 - Approve Deploy to QA
+    #+END_SRC
+
