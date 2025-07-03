@@ -1,0 +1,54 @@
+version: 2.1
+
+# --- Reusable Filters ---
+on-push-main: &on-push-main
+  branches:
+    only:
+      - main
+
+# --- Workflows ---
+workflows:
+  bike-share-workflow:
+    jobs:
+      - build-and-push-docker-image:
+          filters:  # NOTE: allowed only on job level and not workflow level
+            <<: *on-push-main
+      - update-scheduler:
+          requires:
+            - build-and-push-docker-image
+          filters:
+            <<: *on-push-main
+      - circleci-howto-job:
+          filters:
+            <<: *on-push-main
+
+# --- Jobs ---
+jobs:
+  build-and-push-docker-image:
+    docker: # NOTE: jobs need an executor: docker, machine, or macos
+      - image: cimg/python:3.10
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Docker Image
+          command: |
+            docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest .
+
+  update-scheduler:
+    docker:
+      - image: cimg/python:3.10
+    steps:
+      - checkout
+      - run:
+          name: Fake Update Scheduler
+          command: echo "Updating scheduler with the latest Docker image"
+
+  circleci-howto-job:
+    docker: # NOTE: jobs need an executor: docker, machine, or macos
+      - image: cimg/python:3.10
+    steps:
+      - run:
+          name: Dummy Job
+          command: echo "CircleCI how-to job"
