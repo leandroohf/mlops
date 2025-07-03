@@ -1,3 +1,11 @@
+# NOTE: prjects folder to ignore
+bike_share_batch_prediction_simple/inference/*
+bike_share_batch_prediction_simple/models/*
+bike_share_batch_prediction_simple/data/*
+bike_share_batch_prediction_simple/logs/*
+bike_share_batch_prediction_simple/security/*
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -1,0 +1,47 @@
+version: 2.1
+
+# --- Reusable Filters ---
+on-push-main: &on-push-main
+  branches:
+    only:
+      - main
+
+
+# --- Workflows ---
+# workflows:
+#   bike-share-workflow:
+#     filters:
+#     <<: *on-push-main
+#     jobs:
+#       - build-docker-image:
+#       - update-scheduler:
+#         required:
+#           - build-docker-image
+
+#     circleci-howto-job:
+#       filters:
+#         <<: *on-push-main
+      
+
+
+
+
+# --- Jobs ---
+jobs:
+  build-docker-image:
+    docker:
+      - image: cimg/python:3.10
+    steps:
+      - checkout
+      - run:
+          name: Build Docker Image
+          command: docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest .
+
+  update-scheduler:
+    steps:
+      - checkout
+      - run:
+          name: Update Scheduler
+          command: |
+                 gcloud scheduler jobs update http bike-pipeline-job-trigger --schedule="*/3 * * * *"  --location=us-west1
+

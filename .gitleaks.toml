@@ -1,0 +1,12 @@
+title = "Custom Gitleaks Config"
+
+[[rules]]
+  id = "curl-auth-header"
+  description = "Detects Authorization Bearer headers"
+  regex = '''(?i)(authorization:\s*bearer\s+[A-Za-z0-9\-._~+/]+=*)'''
+  tags = ["Authorization", "Bearer", "Token"]
+
+  [rules.allowlist]
+    description = "Allow placeholder in README"
+    paths = ["circleci_howto/README.org"]
+    stopwords = ["YOUR-TOKEN"]

@@ -1,0 +1,7 @@
+project_id: your-project-id
+project_name: your-project-name
+region: us-west1
+bucket_name: your-bucket-name
+docker_registry_name: your-docker-registry
+docker_image: your-image-name
+cloud_run_job_name: your-job-name

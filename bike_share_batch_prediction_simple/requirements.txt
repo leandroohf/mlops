@@ -1,0 +1,12 @@
+psutil
+joblib
+numpy<2.0 # pandavro requires this version
+pandas
+pandavro==1.5.1
+cramjam # required by pandaavro for compression
+google-cloud-storage
+loguru
+semantic_version
+typer
+pyyaml
+pendulum # easy date manipulation

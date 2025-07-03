@@ -1,0 +1,7 @@
+project_id: mlops-project-abacabb
+project_name: mlops-project
+region: us-west1
+bucket_name: bike-share-project-bucket
+docker_registry_name: bike-share-project-registry
+docker_image: bike-share
+cloud_run_job_name: bike-share-project-pipeline-job

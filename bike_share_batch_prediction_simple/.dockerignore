@@ -1,0 +1,14 @@
+.cache/*
+.circleci/*
+data/*
+inference/*
+logs/*
+models/*
+.git/*
+setup_infra.sh
+*.pyc
+*.pyo
+*.pyd
+__pycache__/*
+*.db
+*.sqlite3
