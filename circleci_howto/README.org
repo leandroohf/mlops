@@ -140,7 +140,7 @@
   3. Go to https://circleci.com/vcs-authorize ()Assume you account is already created
 
       a) Click Login -> Signed up for CircleCI with GitHub or  Bitbucket before September 2023? -> Loging with Github
-      b) Top left drop down menu: Select your organization or your personal Githib account
+      b) Top left drop down menu: Select your organization or your personal Github account
       c) Projects -> Click circleci_howto
       d) Project Settings:
           - Environment Variables: Add the environment variables you need for your project

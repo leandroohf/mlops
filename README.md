@@ -8,3 +8,4 @@ Decide to create this repo to test and learn mlops. Decide to start with small p
 3. online inference with app and kubernetes
 4.  monitoring systems
 5. work with pub/sub queue
+
