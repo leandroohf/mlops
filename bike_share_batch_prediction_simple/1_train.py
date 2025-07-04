@@ -10,6 +10,8 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
+# NOTE: triggering the pipeline
+
 @app.command()
 def fake_train(
     env: str = typer.Option("local", 
