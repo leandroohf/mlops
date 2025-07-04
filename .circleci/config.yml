@@ -78,13 +78,13 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Authenticate and Update Scheduler
+          name: Authenticate and Update Scheduler # NOTE: every 6 hours: 0 */6 * * * or every 3 minutes: */3 * * * *
           command: |
             echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
             gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
             gcloud config set project mlops-project-abacabb
             gcloud scheduler jobs update http bike-pipeline-job-trigger \
-                  --schedule="*/3 * * * *" \
+                  --schedule="0 */6 * * *" \
                   --location=us-west1
 
   circleci-howto-job:
