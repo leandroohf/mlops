@@ -46,7 +46,7 @@ jobs:
 
   build-and-push-docker-image:
     docker: # NOTE: jobs need an executor: docker, machine, or macos
-      - image: cimg/python:3.10
+      - image: google/cloud-sdk:slim
     steps:
       - checkout
       - setup_remote_docker:
