@@ -54,11 +54,15 @@ jobs:
       - run:
           name: Build Docker Image
           command: |
+            echo "Current directory:"
             pwd
+            echo "Listing files:"
             ls -la
             echo "Building Docker image..."
-            docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest .
-
+            docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest \
+              -f bike_share_batch_prediction_simple/Dockerfile \
+              bike_share_batch_prediction_simple/
+              
   update-scheduler:
     docker:
       - image: cimg/python:3.10
