@@ -1,32 +1,39 @@
 version: 2.1
 
-# --- Reusable Filters ---
-on-push-main: &on-push-main
-  branches:
-    only:
-      - main
-
 # --- Workflows ---
 workflows:
   bike-share-workflow:
     jobs:
       - test-gcloud-auth:
           filters:
-            <<: *on-push-main
+            branches:
+              only:
+                - main
+            paths:
+              - bike_share_batch_prediction_simple/**
       - build-and-push-docker-image:
-          filters:  # NOTE: allowed only on job level and not workflow level
-            <<: *on-push-main
+          filters:
+            branches:
+              only:
+                - main
             paths:
               - bike_share_batch_prediction_simple/**
       - update-scheduler:
           requires:
             - build-and-push-docker-image
           filters:
-            <<: *on-push-main
+            branches:
+              only:
+                - main
+            paths:
+              - bike_share_batch_prediction_simple/**
       - circleci-howto-job:
           filters:
-            <<: *on-push-main
-
+            branches:
+              only:
+                - main
+            paths:
+              - bike_share_batch_prediction_simple/**
 # --- Jobs ---
 jobs:
   test-gcloud-auth:
