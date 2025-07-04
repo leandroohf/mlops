@@ -39,7 +39,7 @@ jobs:
           name: Authenticate with Google Cloud
           command: |
             gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-            gcloud config set project your-project-id
+            gcloud config set project mlops-project-abacabb
       - run:
           name: List Authenticated Accounts
           command: gcloud auth list
@@ -61,16 +61,31 @@ jobs:
             echo "Building Docker image..."
             docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest \
               -f bike_share_batch_prediction_simple/Dockerfile \
-              bike_share_batch_prediction_simple/
-              
+              bike_share_batch_prediction_simple/ 
+
+      - run:
+          name: Authenticate and Push to Google Artifact Registry
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project mlops-project-abacabb
+            gcloud auth configure-docker us-west1-docker.pkg.dev
+            docker push us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest
+
   update-scheduler:
     docker:
-      - image: cimg/python:3.10
+      - image: google/cloud-sdk:slim
     steps:
       - checkout
       - run:
-          name: Fake Update Scheduler
-          command: echo "Updating scheduler with the latest Docker image"
+          name: Authenticate and Update Scheduler
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project mlops-project-abacabb
+            gcloud scheduler jobs update http bike-pipeline-job-trigger \
+                  --schedule="*/3 * * * *" \
+                  --location=us-west1
 
   circleci-howto-job:
     docker: # NOTE: jobs need an executor: docker, machine, or macos
