@@ -16,6 +16,8 @@ workflows:
       - build-and-push-docker-image:
           filters:  # NOTE: allowed only on job level and not workflow level
             <<: *on-push-main
+            paths:
+              - bike_share_batch_prediction_simple/**
       - update-scheduler:
           requires:
             - build-and-push-docker-image
