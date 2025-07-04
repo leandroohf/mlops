@@ -54,6 +54,9 @@ jobs:
       - run:
           name: Build Docker Image
           command: |
+            pwd
+            ls -la
+            echo "Building Docker image..."
             docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest .
 
   update-scheduler:
