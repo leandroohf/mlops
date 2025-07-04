@@ -12,11 +12,9 @@ Bike sharing systems struggle with bikes being in the wrong place at the wrong t
 
 We want to predict bike net change per station to help rebalance bikes (ensure availability, reduce overflow).
 
-
 NOTEs: for writting better later
 * For simplicity we are overwritting previous models
 * Assume training time are fast < 30minutes
-
 
 
 # How to set google credeantials on circleci
@@ -31,3 +29,5 @@ NOTEs: for writting better later
    ```sh
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
+
+   agora vai mudar
