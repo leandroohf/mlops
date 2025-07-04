@@ -10,6 +10,9 @@ on-push-main: &on-push-main
 workflows:
   bike-share-workflow:
     jobs:
+      - test-gcloud-auth:
+          filters:
+            <<: *on-push-main
       - build-and-push-docker-image:
           filters:  # NOTE: allowed only on job level and not workflow level
             <<: *on-push-main
@@ -24,6 +27,23 @@ workflows:
 
 # --- Jobs ---
 jobs:
+  test-gcloud-auth:
+    docker:
+      - image: google/cloud-sdk:slim
+    steps:
+      - run:
+          name: Decode Service Account Key
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project your-project-id
+      - run:
+          name: List Authenticated Accounts
+          command: gcloud auth list
+
   build-and-push-docker-image:
     docker: # NOTE: jobs need an executor: docker, machine, or macos
       - image: cimg/python:3.10
