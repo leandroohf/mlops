@@ -25,15 +25,9 @@ NOTEs: for writting better later
    1. Projedct Settings
    1. Enviroment variable
       ** Add a new env variable
-      
+
    1. Copy the base64 contents of the security/gcp-bike-share-key.json
-   
+
    ```sh
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
-
-
-   
-   
-   
-
