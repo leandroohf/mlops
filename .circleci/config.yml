@@ -55,8 +55,8 @@ jobs:
           command: |
             echo "Checking for changes in bike_share_batch_prediction_simple..."
             # NOTE: fetching changes in the target project folder
-            git fetch origin main
-            CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- bike_share_batch_prediction_simple/)
+            git fetch origin main:main --unshallow || true
+            CHANGED_FILES=$(git diff --name-only main...HEAD -- bike_share_batch_prediction_simple/)
             echo "$CHANGED_FILES"
 
             # NOTE: halt this job if no changes are detected
