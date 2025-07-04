@@ -29,5 +29,3 @@ NOTEs: for writting better later
    ```sh
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
-
-   agora vai mudar
