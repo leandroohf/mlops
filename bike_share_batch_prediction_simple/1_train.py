@@ -12,6 +12,7 @@ app = typer.Typer()
 
 # desisto 
 
+
 @app.command()
 def fake_train(
     env: str = typer.Option("local", 
