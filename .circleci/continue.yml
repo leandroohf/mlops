@@ -55,7 +55,6 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
-
       - run:
           name: Debug Parameters
           command: |
@@ -80,7 +79,7 @@ jobs:
       - run:
           name: Git diff (file names only)
           command: |
-            echo "🧾 Changed files:"
+            echo "Changed files:"
             git diff --name-only origin/main...origin/"$CIRCLE_BRANCH" || echo "No file diff found"
 
   test-gcloud-auth:
