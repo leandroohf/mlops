@@ -10,7 +10,7 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
-# Agora nao vai
+# NA di=uvida desista
 
 @app.command()
 def fake_predict(
