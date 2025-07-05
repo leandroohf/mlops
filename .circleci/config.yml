@@ -20,7 +20,8 @@ workflows:
       - path-filtering/filter:
           name: Check for changes in bike_share_batch_prediction_simple
           base-revision: main 
-          config-path: .circleci/continue.yml
+          config-path: .circleci/continue.yml # NOTE: no quotes here
+          # NOTE: ".*" it is important and not "**" and no "=>" as suggested by copilot and chatgpt
           mapping: |
             bike_share_batch_prediction_simple/.* build-and-update-modified true
             circleci_howto/.* circlec-howto-modified true

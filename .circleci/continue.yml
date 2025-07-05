@@ -57,15 +57,10 @@ jobs:
       - checkout
 
       - run:
-          name: Show Parameters and Initial State
+          name: Show Circleci Parameters
           command: |
             echo "Build and Update Modified: << pipeline.parameters.build-and-update-modified >>"
             echo "CircleCI Howto Modified: << pipeline.parameters.circlec-howto-modified >>"
-            echo "Current branch: $CIRCLE_BRANCH"
-            git branch -a
-            git remote -v
-            git log --oneline -n 3
-
       - run:
           name: Fetch origin/main and origin/$CIRCLE_BRANCH
           command: |
@@ -74,6 +69,17 @@ jobs:
             git fetch origin "$CIRCLE_BRANCH:refs/remotes/origin/$CIRCLE_BRANCH" || echo "No remote branch $CIRCLE_BRANCH"
 
       - run:
+          name: Show git information
+          command: |
+            echo "Current CIRCLE_BRANCH: $CIRCLE_BRANCH"
+            echo "List all branches locally:"
+            git branch -a
+            echo "Current Git Remote:"
+            git remote -v
+            echo "Current Git Log:"
+            git log --oneline -n 3
+
+      - run: # NOTE: diff still not working. TODO: fix this later
           name: Git diff against origin/main
           command: |
             echo "Git diff: origin/main...origin/$CIRCLE_BRANCH"
