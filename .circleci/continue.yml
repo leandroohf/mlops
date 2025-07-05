@@ -10,15 +10,22 @@ parameters:
     default: false
 
 workflows:
-  
-  bike-share-workflow:
-    when: << pipeline.parameters.build-and-update-modified >>
+  test-debug-workflow:
     jobs:
+      - debug-parameters:
+          filters:
+            branches:
+              only:
+                - main
       - test-gcloud-auth:
           filters:
             branches:
               only:
                 - main
+
+  bike-share-workflow:
+    when: << pipeline.parameters.build-and-update-modified >>
+    jobs:
       - build-and-push-docker-image:
           filters:
             branches:
@@ -42,6 +49,16 @@ workflows:
                 - main
 
 jobs:
+  debug-parameters:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - run:
+          name: Debug Parameters
+          command: |
+            echo "Build and Update Modified: << pipeline.parameters.build-and-update-modified >>"
+            echo "CircleCI Howto Modified: << pipeline.parameters.circlec-howto-modified >>"
+
   test-gcloud-auth:
     docker:
       - image: google/cloud-sdk:slim
