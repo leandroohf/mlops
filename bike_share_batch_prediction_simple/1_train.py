@@ -10,7 +10,8 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
-# abacabb get overhere
+# desisto 
+
 
 @app.command()
 def fake_train(
