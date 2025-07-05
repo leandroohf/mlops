@@ -10,8 +10,6 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
-# Agora nao vai
-
 @app.command()
 def fake_predict(
     env: str = typer.Option("local", 
