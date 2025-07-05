@@ -10,7 +10,7 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
-# desisto 
+# A minha nossa senhora de nove 
 
 
 @app.command()

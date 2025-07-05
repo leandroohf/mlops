@@ -55,32 +55,35 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
+
       - run:
-          name: Debug Parameters
+          name: Show Parameters and Initial State
           command: |
             echo "Build and Update Modified: << pipeline.parameters.build-and-update-modified >>"
             echo "CircleCI Howto Modified: << pipeline.parameters.circlec-howto-modified >>"
-            echo "Current branch is: $CIRCLE_BRANCH"
-            git branch
+            echo "Current branch: $CIRCLE_BRANCH"
+            git branch -a
+            git remote -v
             git log --oneline -n 3
 
       - run:
           name: Fetch origin/main and origin/$CIRCLE_BRANCH
           command: |
-            git fetch origin main:origin/main
+            echo "Fetching branches..."
+            git fetch origin main:refs/remotes/origin/main
             git fetch origin "$CIRCLE_BRANCH:refs/remotes/origin/$CIRCLE_BRANCH" || echo "No remote branch $CIRCLE_BRANCH"
 
       - run:
-          name: Git diff against main
+          name: Git diff against origin/main
           command: |
-            echo "🔍 Diff: origin/main...origin/$CIRCLE_BRANCH"
-            git diff origin/main...origin/"$CIRCLE_BRANCH" || echo "Diff failed (probably a fast-forward or no remote branch)"
+            echo "Git diff: origin/main...origin/$CIRCLE_BRANCH"
+            git diff refs/remotes/origin/main...refs/remotes/origin/"$CIRCLE_BRANCH" || echo "Diff failed"
 
       - run:
-          name: Git diff (file names only)
+          name: Changed files (name only)
           command: |
             echo "Changed files:"
-            git diff --name-only origin/main...origin/"$CIRCLE_BRANCH" || echo "No file diff found"
+            git diff --name-only refs/remotes/origin/main...refs/remotes/origin/"$CIRCLE_BRANCH" || echo "No file diff found"
 
   test-gcloud-auth:
     docker:
