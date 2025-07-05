@@ -22,5 +22,5 @@ workflows:
           base-revision: main 
           config-path: .circleci/continue.yml
           mapping: |
-            bike_share_batch_prediction_simple/.* => build-and-update-modified true
-            circleci_howto/.* => circlec-howto-modified true
+            bike_share_batch_prediction_simple/.* build-and-update-modified true
+            circleci_howto/.* circlec-howto-modified true
