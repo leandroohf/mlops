@@ -22,5 +22,5 @@ workflows:
           base-revision: origin/main # NOTE: main only works with PR. circleci runs diff after the commit change and do not detecte changes in HEAD
           config-path: .circleci/continue.yml
           mapping: |
-            mlops/bike_share_batch_prediction_simple/** => build-and-update-modified true
-            mlops/circleci_howto/** => circlec-howto-modified true
+            bike_share_batch_prediction_simple/** => build-and-update-modified true
+            circleci_howto/** => circlec-howto-modified true
