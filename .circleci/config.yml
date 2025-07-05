@@ -19,8 +19,8 @@ workflows:
     jobs:
       - path-filtering/filter:
           name: Check for changes in bike_share_batch_prediction_simple
-          base-revision: origin/main # NOTE: main only works with PR. circleci runs diff after the commit change and do not detecte changes in HEAD
-          config-path: .circleci/continue.yml
+          base-revision: main 
+          config-path: ".circleci/continue.yml"
           mapping: |
-            bike_share_batch_prediction_simple/** => build-and-update-modified true
-            circleci_howto/** => circlec-howto-modified true
+            bike_share_batch_prediction_simple/.* => build-and-update-modified true
+            circleci_howto/.* => circlec-howto-modified true
