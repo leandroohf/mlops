@@ -1,134 +1,17 @@
 version: 2.1
 
+setup: true  # NOTE: Top-level key that enables setup workflow
+
+orbs:
+  path-filtering: circleci/path-filtering@2.0.1
+
 workflows:
-  version: 2
-  bike-share-workflow:
+  setup-workflow:
     jobs:
-      - test-gcloud-auth:
-          filters:
-            branches:
-              only:
-                - main
-      - build-and-push-docker-image:
-          filters:
-            branches:
-              only:
-                - main
-      - update-scheduler:
-          requires:
-            - build-and-push-docker-image
-          filters:
-            branches:
-              only:
-                - main
-      - circleci-howto-job:
-          filters:
-            branches:
-              only:
-                - main
-
-jobs:
-  test-gcloud-auth:
-    docker:
-      - image: google/cloud-sdk:slim
-    steps:
-      - run:
-          name: Decode Service Account Key
-          command: |
-            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
-      - run:
-          name: Authenticate with Google Cloud
-          command: |
-            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-            gcloud config set project mlops-project-abacabb
-      - run:
-          name: List Authenticated Accounts
-          command: gcloud auth list
-
-  build-and-push-docker-image:
-    docker:
-      - image: google/cloud-sdk:slim
-    steps:
-      - checkout
-      - run:
-          name: Skip if no changes to project folder (show diff and halt)
-          command: |
-            echo "Checking for changes in bike_share_batch_prediction_simple..."
-            # NOTE: fetching changes in the target project folder
-            git fetch origin main:main
-            CHANGED_FILES=$(git diff --name-only main...HEAD -- bike_share_batch_prediction_simple/)
-            echo "$CHANGED_FILES"
-
-            # NOTE: halt this job if no changes are detected
-            if [ -z "$CHANGED_FILES" ]; then
-              echo "No changes detected. Skipping job."
-              circleci-agent step halt
-            fi
-      - setup_remote_docker:
-          docker_layer_caching: true
-      - run:
-          name: Build Docker Image
-          command: |
-            docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest \
-              -f bike_share_batch_prediction_simple/Dockerfile \
-              bike_share_batch_prediction_simple/
-      - run:
-          name: Authenticate and Push to Google Artifact Registry
-          command: |
-            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
-            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-            gcloud config set project mlops-project-abacabb
-            gcloud auth configure-docker us-west1-docker.pkg.dev
-            docker push us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest
-
-  update-scheduler:
-    docker:
-      - image: google/cloud-sdk:slim
-    steps:
-      - checkout
-      - run:
-          name: Skip if no changes to project folder (show diff and halt)
-          command: |
-            echo "Checking for changes in bike_share_batch_prediction_simple..."
-            # NOTE: fetching changes in the target project folder
-            git fetch origin main
-            CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- bike_share_batch_prediction_simple/)
-            echo "$CHANGED_FILES"
-  
-            # NOTE: halt this job if no changes are detected
-            if [ -z "$CHANGED_FILES" ]; then
-              echo "No changes detected. Skipping job."
-              circleci-agent step halt
-            fi
-      - run:
-          name: Authenticate and Update Scheduler
-          command: |
-            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
-            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-            gcloud config set project mlops-project-abacabb
-            gcloud scheduler jobs update http bike-pipeline-job-trigger \
-              --schedule="0 */6 * * *" \
-              --location=us-west1
-
-  circleci-howto-job:
-    docker:
-      - image: cimg/python:3.10
-    steps:
-      - checkout
-      - run:
-          name: Skip if no changes to project folder (show diff and halt)
-          command: |
-            echo "Checking for changes in bike_share_batch_prediction_simple..."
-            # NOTE: fetching changes in the target project folder
-            git fetch origin main
-            CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- circleci_howto/)
-            echo "$CHANGED_FILES"
-
-            # NOTE: halt this job if no changes are detected
-            if [ -z "$CHANGED_FILES" ]; then
-              echo "No changes detected. Skipping job."
-              circleci-agent step halt
-            fi
-      - run:
-          name: Dummy Job
-          command: echo "CircleCI how-to job"
+      - path-filtering/filter:
+          name: Check for changes in bike_share_batch_prediction_simple
+          base-revision: main
+          config-path: .circleci/continue.yml
+          mapping: |
+            bike_share_batch_prediction_simple/* => build-and-update-modified true
+            .circleci/continue.yml => circlec-howto-modified true

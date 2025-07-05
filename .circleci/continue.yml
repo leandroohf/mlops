@@ -1,0 +1,106 @@
+version: 2.1
+
+parameters:
+  build-and-update-modified:
+    type: boolean
+    default: false
+
+  circlec-howto-modified:
+    type: boolean
+    default: false
+
+workflows:
+  
+  bike-share-workflow:
+    when: << pipeline.parameters.build-and-update-modified >>
+    jobs:
+      - test-gcloud-auth:
+          filters:
+            branches:
+              only:
+                - main
+      - build-and-push-docker-image:
+          filters:
+            branches:
+              only:
+                - main
+      - update-scheduler:
+          requires:
+            - build-and-push-docker-image
+          filters:
+            branches:
+              only:
+                - main
+
+  circleci-howto-workflow:
+    when: << pipeline.parameters.circlec-howto-modified >>
+    jobs:
+      - circleci-howto-job:
+          filters:
+            branches:
+              only:
+                - main
+
+jobs:
+  test-gcloud-auth:
+    docker:
+      - image: google/cloud-sdk:slim
+    steps:
+      - run:
+          name: Decode Service Account Key
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+      - run:
+          name: Authenticate with Google Cloud
+          command: |
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project mlops-project-abacabb
+      - run:
+          name: List Authenticated Accounts
+          command: gcloud auth list
+
+  build-and-push-docker-image:
+    docker:
+      - image: google/cloud-sdk:slim
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build Docker Image
+          command: |
+            docker build -t us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest \
+              -f bike_share_batch_prediction_simple/Dockerfile \
+              bike_share_batch_prediction_simple/
+      - run:
+          name: Authenticate and Push to Google Artifact Registry
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project mlops-project-abacabb
+            gcloud auth configure-docker us-west1-docker.pkg.dev
+            docker push us-west1-docker.pkg.dev/mlops-project-abacabb/bike-share-project-registry/bike-share:latest
+
+  update-scheduler:
+    docker:
+      - image: google/cloud-sdk:slim
+    steps:
+      - checkout
+      - run:
+          name: Authenticate and Update Scheduler
+          command: |
+            echo "$GCLOUD_SERVICE_KEY_BASE64" | base64 --decode > /tmp/gcp-key.json
+            gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+            gcloud config set project mlops-project-abacabb
+            gcloud scheduler jobs update http bike-pipeline-job-trigger \
+              --schedule="0 */6 * * *" \
+              --location=us-west1
+
+  circleci-howto-job:
+    docker:
+      - image: cimg/python:3.10
+    steps:
+      - checkout
+      - run:
+          name: Dummy Job
+          command: echo "CircleCI how-to job"
