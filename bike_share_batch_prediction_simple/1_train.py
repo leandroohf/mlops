@@ -10,6 +10,7 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
+# Fake training function to simulate model training and artifact saving
 
 @app.command()
 def fake_train(

@@ -5,14 +5,14 @@ setup: true  # NOTE: Top-level key that enables setup workflow
 orbs:
   path-filtering: circleci/path-filtering@2.0.1
 
-parameters:
-  build-and-update-modified:
-    type: boolean
-    default: false
+# parameters:
+#   build-and-update-modified:
+#     type: boolean
+#     default: false
 
-  circlec-howto-modified:
-    type: boolean
-    default: false
+#   circlec-howto-modified:
+#     type: boolean
+#     default: false
 
 workflows:
   setup-workflow:
@@ -22,5 +22,5 @@ workflows:
           base-revision: main
           config-path: .circleci/continue.yml
           mapping: |
-            bike_share_batch_prediction_simple/** => build-and-update-modified true
-            circleci_howto/** => circlec-howto-modified true
+            mlops/bike_share_batch_prediction_simple/** => build-and-update-modified true
+            mlops/circleci_howto/** => circlec-howto-modified true
