@@ -58,6 +58,16 @@ jobs:
           command: |
             echo "Build and Update Modified: << pipeline.parameters.build-and-update-modified >>"
             echo "CircleCI Howto Modified: << pipeline.parameters.circlec-howto-modified >>"
+      - run:
+          name:  Debug git diff 
+          command: |
+            git fetch origin main
+            echo "Changed files since origin/main:"
+            git diff origin/main...dev
+            echo "Changed files since origin/main (short format):"
+            git diff --name-only origin/main...HEAD
+            echo "Changed files since origin/main (long format):"
+            git diff --name-only origin/main...main
 
   test-gcloud-auth:
     docker:

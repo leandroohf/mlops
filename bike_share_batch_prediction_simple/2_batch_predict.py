@@ -10,7 +10,7 @@ from common.artifact_store import LocalArtifactStore, GCPArtifactStore
 
 app = typer.Typer()
 
-# NOTE: triggering the pipeline with a fake model prediction AGORA VAI
+# Agora nao vai
 
 @app.command()
 def fake_predict(
