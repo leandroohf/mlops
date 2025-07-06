@@ -17,7 +17,30 @@ NOTEs: for writting better later
 * Assume training time are fast < 30minutes
 
 
-# How to set google credeantials on circleci
+# Architecture
+
++------------------------+
+|    CircleCI            | ← On push
+|  Build & Deploy Image  |
++-----------+------------+
+            |
+            v
+    Docker Image Pushed
+    to Artifact Registry
+            |
+            v
++--------------------------+
+| GCP Cloud Run Job (e.g., |
+|    bike-pipeline-job)    |
++--------------------------+
+            ^
+            |
++-----------+------------+
+| GCP Cloud Scheduler    | ← Every day/hour
+| Triggers the Job       |
++------------------------+
+
+# How to set google credentials on circleci
 
 
    1. Projedct Settings
