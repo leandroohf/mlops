@@ -25,10 +25,12 @@ flowchart TD
     B --> C[GCP Cloud Run Job e.g. bike-pipeline-job]
     D[GCP Cloud Scheduler Triggers the Job Every hour] --> C
 
-    A:::trigger
-    D:::trigger
+    classDef trigger fill:transparent,stroke:#333,stroke-width:1px;
 
-    classDef trigger fill:#f9f,stroke:#333,stroke-width:2px;
+    A:::trigger
+    B:::trigger
+    C:::trigger
+    D:::trigger
 ```
 
 # How to set google credentials on circleci
