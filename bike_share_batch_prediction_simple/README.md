@@ -46,6 +46,10 @@ flowchart TD
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
 
+# Cricleci
+
+  Notes abut how to skip trigger the circleci pipeline when working on documentaion.
+
   ```sh
   # NOTE: sckip trigger circleci for working oin docs
   git commit -m "Update docs [skip ci]"
