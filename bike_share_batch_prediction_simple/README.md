@@ -19,6 +19,7 @@ NOTEs: for writting better later
 
 # Architecture
 
+```mermaid
 flowchart TD
     A[CircleCI Build & Deploy Image] --> B[Docker Image Pushed to Artifact Registry]
     B --> C[GCP Cloud Run Job e.g. bike-pipeline-job]
@@ -28,7 +29,7 @@ flowchart TD
     D:::trigger
 
     classDef trigger fill:#f9f,stroke:#333,stroke-width:2px;
-
+```
 
 # How to set google credentials on circleci
 
