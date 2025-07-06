@@ -14,8 +14,7 @@ We want to predict bike net change per station to help rebalance bikes (ensure a
 
 NOTEs: for writting better later
 * For simplicity we are overwritting previous models
-* Assume training time are fast < 30minutes
-
+* Assume training time are fast < 20minutes
 
 # Architecture
 
@@ -33,12 +32,13 @@ flowchart TD
     D:::trigger
 ```
 
-# How to set google credentials on circleci
+# Setting infra
 
+# How to set google credentials on circleci
 
    1. Projedct Settings
    1. Enviroment variable
-      ** Add a new env variable
+      * Add a new env variable
 
    1. Copy the base64 contents of the security/gcp-bike-share-key.json
 
@@ -46,11 +46,6 @@ flowchart TD
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
 
-# Cricleci
+# Next: how to scale 
 
-  Notes abut how to skip trigger the circleci pipeline when working on documentaion.
-
-  ```sh
-  # NOTE: sckip trigger circleci for working oin docs
-  git commit -m "Update docs [skip ci]"
-  ```
+   How I would change the architecture if the number of bike stations are big and the statiosn are spread on multiply cities in one country.

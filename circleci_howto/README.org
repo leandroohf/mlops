@@ -292,8 +292,7 @@ AGORA MUDOU TUDO
            - run:       # <== circleci do not print var contents on context.
                name: greeting
                command: echo $GREETING
-
-
+              
      workflows:
        version: 2
        build-and-deploy:
@@ -317,4 +316,13 @@ AGORA MUDOU TUDO
                requires:
                  - Approve Deploy to QA
     #+END_SRC
+
+* Cricleci tips
+
+  * Notes about how to skip trigger the circleci pipeline when working on documentaion.
+
+    #+begin_src sh
+      # NOTE: sckip trigger circleci for working oin docs
+      git commit -m "Update docs [skip ci]"
+    #+end_src
 
