@@ -14,7 +14,7 @@ We want to predict bike net change per station to help rebalance bikes (ensure a
 
 NOTEs: for writting better later
 * For simplicity we are overwritting previous models
-* Assume training time are fast < 20minutes
+* Assume training time are fast < 20minutes (cloud job has processing time limit. It is design for short jobs)
 
 # Architecture
 
@@ -34,6 +34,11 @@ flowchart TD
 
 # Setting infra
 
+1. create iam
+1. create gcs 
+1. create the cloud job
+1. create clooud scheduler
+
 # How to set google credentials on circleci
 
    1. Projedct Settings
@@ -49,3 +54,5 @@ flowchart TD
 # Next: how to scale 
 
    How I would change the architecture if the number of bike stations are big and the statiosn are spread on multiply cities in one country.
+   1. move to better scheduler: Airflow with astronomer
+   2. change architecture to scale
