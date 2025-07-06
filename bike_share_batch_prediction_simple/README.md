@@ -45,3 +45,8 @@ flowchart TD
    ```sh
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
+
+  ```sh
+  # NOTE: sckip trigger circleci for working oin docs
+  git commit -m "Update docs [skip ci]"
+  ```
