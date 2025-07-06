@@ -19,26 +19,16 @@ NOTEs: for writting better later
 
 # Architecture
 
-+------------------------+
-|    CircleCI            | ← On push
-|  Build & Deploy Image  |
-+-----------+------------+
-            |
-            v
-    Docker Image Pushed
-    to Artifact Registry
-            |
-            v
-+--------------------------+
-| GCP Cloud Run Job (e.g., |
-|    bike-pipeline-job)    |
-+--------------------------+
-            ^
-            |
-+-----------+------------+
-| GCP Cloud Scheduler    | ← Every day/hour
-| Triggers the Job       |
-+------------------------+
+flowchart TD
+    A[CircleCI Build & Deploy Image] --> B[Docker Image Pushed to Artifact Registry]
+    B --> C[GCP Cloud Run Job e.g. bike-pipeline-job]
+    D[GCP Cloud Scheduler Triggers the Job Every hour] --> C
+
+    A:::trigger
+    D:::trigger
+
+    classDef trigger fill:#f9f,stroke:#333,stroke-width:2px;
+
 
 # How to set google credentials on circleci
 
