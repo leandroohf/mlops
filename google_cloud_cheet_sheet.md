@@ -1,7 +1,7 @@
 # Google Cloud Cheat Sheet
 
 > **Note on AI Use**  
-> This document was created with the help of AI (ChatGPT by OpenAI) to save time and speed up the writing process. It's not a direct copy-paste—I built it gradually from my own notes and questions, and reviewed and edited the content to fit my needs.
+> This document was created with the help of AI to save time and speed up the writing process. It's not a direct copy-paste—I built it gradually from my own notes and questions, and reviewed and edited the content to fit my needs.
 
 
 ##  Project
