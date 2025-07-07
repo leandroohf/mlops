@@ -18,6 +18,8 @@ NOTEs: for writting better later
 
 # Architecture
 
+  * TODO: add a text explaining the flow 
+
 ```mermaid
 flowchart TD
     A[CircleCI Build & Deploy Image] --> B[Docker Image Pushed to Artifact Registry]
