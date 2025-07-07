@@ -107,6 +107,8 @@ The remainning steps can be seen in the script `setup_infra.sh`
 
 # Next: how to scale 
 
-   How I would change the architecture if the number of bike stations are big and the statiosn are spread on multiply cities in one country.
-   1. move to better scheduler: Airflow with astronomer
-   2. change architecture to scale
+  This project serves as a limited **MVP** and is not designed to scale. It demonstrates a basic batch pipeline for bike net change predictions, but as the number of bike stations grows and are spreaded across multiple cities the current architecture will not be sufficient.
+
+  To scale this project, I would:
+  1. replace the cloud scheduler by airflwo managed by astronomer
+  1. Redesign the architecture to support parallelism and distributed processing—
