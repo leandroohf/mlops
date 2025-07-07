@@ -20,7 +20,6 @@ It's common to create separate projects for development and production environme
 
 ## IAM, IAM Groups, IAM policy and service accounts
 
-
 IAM is similar to **user and permission systems in an operating system**. It controls **who can access what** and **what actions they can perform** on GCP resources.
 
 Examples of IAM:
@@ -34,6 +33,35 @@ Examples of IAM:
 - `roles/compute.admin` = Full control over VMs
 
 An **IAM policy** binds a principal (user, group, or service account) to one or more roles **on a resource**. They are similar to `/etc/group` or `/etc/sudoers` in Linux, where you map users to groups and assign privileges.
+
+```sh
+  # NOTE: create iam and mage iam for servoce accounts
+  gcloud iam service-accounts create bike-share-job \
+        --project=mlops-project-abacabb \
+        --description="Service account for bike share project" \
+        --display-name="bike-share-service-account"
+
+  # list all accounts
+  gcloud projects get-iam-policy mlops-project-abacabb
+
+  # lits only services accounts
+  gcloud iam service-accounts list --project=mlops-project-abacabb
+
+  # delete
+  gcloud iam service-accounts delete \
+        pipeline-job-sa@mlops-project-abacabb.iam.gserviceaccount.com \
+        --project=mlops-project-abacabb
+
+  # NOTE: Grant access
+  gcloud projects add-iam-policy-binding mlops-project-abacabb \
+        --member="serviceAccount:bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com" \
+        --role="roles/storage.admin"
+
+  # NOTE: Generate and download the key file
+  gcloud iam service-accounts keys create ~/gcp-bike-share-key.json \
+        --iam-account=bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com \
+        --project=mlops-project-abacabb
+```
 
 ## Billing Accounts
 

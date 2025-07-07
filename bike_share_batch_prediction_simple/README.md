@@ -76,23 +76,16 @@ tree -L 2
               --description="Service account for bike share project" \
               --display-name="bike-share-service-account"
 
-       # list all accounts
-       gcloud projects get-iam-policy mlops-project-abacabb
-
        # lits only services accounts
        gcloud iam service-accounts list --project=mlops-project-abacabb
 
-       # delete
-       gcloud iam service-accounts delete \
-              pipeline-job-sa@mlops-project-abacabb.iam.gserviceaccount.com \
-              --project=mlops-project-abacabb
-
-       # NOTE: Grant access
+       # NOTE: Grant access to gcs 
        gcloud projects add-iam-policy-binding mlops-project-abacabb \
               --member="serviceAccount:bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com" \
               --role="roles/storage.admin"
 
        # NOTE: Generate and download the key file
+       # run the command bellow
        gcloud iam service-accounts keys create ~/gcp-bike-share-key.json \
               --iam-account=bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com \
               --project=mlops-project-abacabb
