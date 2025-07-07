@@ -145,3 +145,62 @@ If you’re building an app with users in multiple countries:
 | BigQuery            | Supercharged SQL with columnar storage                   |
 | Cloud Logging       | /var/log and journalctl for all your cloud services      |
 | Cloud Build         | CI/CD system like Jenkins or GitHub Actions              |
+
+
+## gcloud
+
+The gcloud CLI is your remote control for Google Cloud — like a universal remote for managing everything from virtual machines to storage buckets. Just like a TV remote lets you switch channels, gcloud lets you spin up servers, trigger jobs, move files, and manage services from your terminal.
+
+* core commands
+
+```sh
+gcloud auth login                        # Authenticate to GCP
+gcloud config list                       # Show current config (project, region, zone)
+gcloud config set project [PROJECT_ID]  # Set active project
+gcloud config set compute/region [REGION]
+gcloud config set compute/zone [ZONE]
+
+gcloud projects get-iam-policy [PROJECT_ID]                     # View roles & members
+gcloud projects add-iam-policy-binding [PROJECT_ID] \
+  --member="user:someone@example.com" --role="roles/viewer"     # Grant access
+```
+
+* cloud stirage 
+
+```sh
+gcloud storage ls                                # List buckets
+gcloud storage cp file.txt gs://my-bucket/       # Upload file
+gcloud storage cp gs://my-bucket/file.txt .      # Download file
+gcloud storage rm gs://my-bucket/file.txt        # Delete file
+
+# NOTE: gsutil is old but more robust
+gsutil -m cp -r bigdir/ gs://my-bucket/          # Parallel uploads for speed
+```
+
+* base of main services
+
+```sh
+# NOTE: cloud run (run small jobs)
+gcloud run deploy [SERVICE_NAME] \
+  --image gcr.io/[PROJECT]/[IMAGE] --region [REGION] --platform managed
+
+gcloud run services list
+gcloud run jobs run [JOB_NAME] --region [REGION]
+
+# NOTE: scheduler
+gcloud scheduler jobs list
+gcloud scheduler jobs run [JOB_NAME]
+
+# NOTE: VMs
+gcloud compute instances list
+gcloud compute ssh [INSTANCE_NAME]               # SSH into VM
+gcloud compute scp file.txt [INSTANCE_NAME]:~/   # Copy file to VM
+```
+
+* model artifacts registry
+
+```sh
+gcloud artifacts repositories list
+gcloud auth configure-docker
+gcloud artifacts docker tags list [REGION]-docker.pkg.dev/[PROJECT]/[REPO]/[IMAGE]
+```
