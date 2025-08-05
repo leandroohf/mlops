@@ -12,13 +12,9 @@ Bike sharing systems struggle with bikes being in the wrong place at the wrong t
 
 We want to predict bike net change per station to help rebalance bikes (ensure availability, reduce overflow).
 
-NOTEs: for writting better later
-* For simplicity we are overwritting previous models
-* Assume training time are fast < 20minutes (cloud job has processing time limit. It is design for short jobs)
-
 # Architecture
 
-This pipeline runs every hour using Google Cloud Scheduler, which triggers a Cloud Run job. The job, packaged as a Docker image built and pushed via CircleCI, runs training (1_train.py) on the most recent data and immediately generates predictions (2_batch_predict.py) for the next hour. It is assumed that the total time is les. than 20 minutes. 
+This pipeline runs every hour using Google Cloud Scheduler, which triggers a Cloud Run job. The job, packaged as a Docker image built and pushed via CircleCI, runs training (1_train.py) on the most recent data and immediately generates predictions (2_batch_predict.py) for the next hour. It is assumed that the total time is less than 20 minutes. 
 
 ```mermaid
 flowchart TD
@@ -60,9 +56,13 @@ tree -L 2
 └── setup_infra.sh
 ```
 
+NOTEs: 
+* For simplicity we are overwritting previous models after retraining
+* Assuming training time are fast (< 20minutes, cloud job has processing time limit. It is design for short jobs)
+
 # Setting infra
 
-1. create iam: 
+1. create iam 
 1. create gcs 
 1. create the cloud job
 1. create clooud scheduler
@@ -70,7 +70,7 @@ tree -L 2
 ```sh
        # NOTE: Create a service account and download its key
 
-       # NOTE: create iam and mage iam for servoce accounts
+       # NOTE: create iam for service accounts
        gcloud iam service-accounts create bike-share-job \
               --project=mlops-project-abacabb \
               --description="Service account for bike share project" \
