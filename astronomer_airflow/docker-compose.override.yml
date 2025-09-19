@@ -1,0 +1,10 @@
+services:
+  scheduler:
+    volumes:
+      - ./secrets/bike-share-sa.json:/usr/local/airflow/secrets/bike-share-sa.json:ro
+  api-server:
+    volumes:
+      - ./secrets/bike-share-sa.json:/usr/local/airflow/secrets/bike-share-sa.json:ro
+  triggerer:
+    volumes:
+      - ./secrets/bike-share-sa.json:/usr/local/airflow/secrets/bike-share-sa.json:ro

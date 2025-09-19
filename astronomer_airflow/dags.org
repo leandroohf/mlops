@@ -1,0 +1,265 @@
+
+
+Explain all dags examples
+
+* hello dag
+
+  * test airflow is running and installed with minimum requirements
+
+* exampledag
+
+    * astronomer example
+    * calls api
+    * save results in xcom (json  format)
+
+* xcom dag
+
+    * Simple example of how to use xcoms
+
+* gcp_smoke_connection_test dag
+
+    * how to test connection and access to gcp
+      * use enviroment varibles defined on .env for google authentications
+      * refresh token
+      * list all projects under the service accounts
+
+    Steps: **Allows gcs access**
+    * Setting google authentication (allows google api to connect to gcp)
+
+      1. Generate key-file.json
+
+             #+begin_src sh
+              # NOTE: setting by passing SA JSON
+
+              # NOTE: list all service accounts in the project
+              gcloud config set project mlops-project-id
+
+              gcloud iam service-accounts list
+
+
+              # NOTE: creating service account key file
+              SA=<service-account>@<mlops-project-id>.iam.gserviceaccount.com
+
+              gcloud iam service-accounts keys create ./secrets/key-sa.json \
+                     --iam-account="$SA"
+
+              # NOTE: edit docker compose and .env
+              # mount points: ./secrets/key-sa.json:/usr/local/airflow/secrets/key-sa.json:ro
+              # .env vars: GOOGLE_APPLICATION_CREDENTIALS=/usr/local/airflow/secrets/ley-sa.json
+            #+end_src
+
+      2. add mount poinst in the docker compose file:
+         astronomer_airflow/docker-compose.override.yml (this is adtronomer
+         related)
+
+         #+begin_src yaml
+           services:
+             scheduler:
+               volumes:
+                 - ./secrets/key-sa.json:/usr/local/airflow/secrets/key-sa.json:ro
+             api-server:
+               volumes:
+                 - ./secrets/key-sa.json:/usr/local/airflow/secrets/key-sa.json:ro
+             triggerer:
+               volumes:
+                 - ./secrets/key-sa.json:/usr/local/airflow/secrets/key-sa.json:ro
+         #+end_src
+
+      3. .env (example)
+
+         #+begin_src yaml
+           GOOGLE_APPLICATION_CREDENTIALS=/usr/local/airflow/secrets/key-sa.json
+           GOOGLE_CLOUD_PROJECT=mlops-project-id
+           TRAINING_DATASET=gs://bucket/data/training-data.csv
+         #+end_src
+
+* producer and consumer dags
+
+    * How to use datasets
+      * Context:
+        * producer dag is manages by datat enginerring team that updated
+          training data (data wharehouse)
+        * consumer dag is manged by mle team and it is tigger when training data
+          is updated
+      * The datasets is internal airflow string store in airflow interbal db.
+        airflow track the state associated to the datasets
+      * if the datasets state is update by the dag producer that writes an csv
+        file in gcs, airflow automatic trigger the consumer dag for you
+
+* sensor dag
+
+    * example of sensors
+    * how to use google providers
+        * how to use connections
+    * how to use shared code (better organize your code)
+
+
+    Steps
+    1. install google provider tools
+
+       * add required tools in the requirement.txt
+
+            #+begin_src sh
+              # NOTE: need to restart astronomer this way
+              # most liukely is mac os and ggolge provider tools issue
+              DOCKER_DEFAULT_PLATFORM=linux/amd64 astro dev restart
+            #+end_src
+
+    2. setting google authentication for google provider airflow tools
+
+       * In airflow web UI -> Admin
+
+         1. Connections -> Add connections
+
+         2. Connection ID: google_cloud_platform
+
+         3. Connection type: Google Cloud (if not there is because google
+            provider installation failed)
+
+         4. Extra field JSON
+
+            #+begin_src json
+              {
+                  "extra__google_cloud_platform__key_path": "/usr/local/airflow/secrets/key-sa.json",
+                  "extra__google_cloud_platform__project": "mlops-project-id",
+                  "extra__google_cloud_platform__scope": "https://www.googleapis.com/auth/cloud-platform"
+              }
+            #+end_src
+
+    3. How to test? sensor watch blob for updates or creation
+
+       #+begin_src sh
+         # NOTE: for test UPDATE ====
+         # NOTE: create file
+         # see task: wait_for_update
+         echo "hello from an external system" | gsutil cp - gs://YOUR_BUCKET/training/hello.txt
+
+         # NOTE: delete
+         gsutil rm gs://YOUR_BUCKET/training/hello.txt
+       #+end_src
+
+       * For example of wait for csv creation see:
+
+         * DAGs: producer
+         * [Un]commented task: wait_for_file
+         * blob: data/training-data.csv (datasets)
+
+* vertexai dag (defferable operator)
+** veretxai check
+
+  * example hot check if you are able to start vertexai jobs using defferrable
+    operators.
+    * start VertexAi using VertexAi docker image (default)
+
+  * Prepare infra
+
+    #+begin_src sh
+      # NOTE: Setting project id and service account
+      export PROJECT_ID="mlops-project-id"
+      SA=service-account@mlops-project-id.iam.gserviceaccount.com
+
+      # NOTE: enable vertexai in google cloud
+      gcloud services enable aiplatform.googleapis.com \
+             --project "$PROJECT_ID"
+
+      # NOTE: add vetexai permission to service account
+      gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+             --member="serviceAccount:$SA" \
+             --role="roles/aiplatform.user"
+
+      # NOTE: check vertexai is enabled
+      gcloud services list --enabled --project "$PROJECT_ID" | grep -E 'aiplatform|compute|storage'
+
+      # NOTE: Verify IAM permissions (policy)
+      gcloud projects get-iam-policy "$PROJECT_ID" \
+             --flatten="bindings[].members" \
+             --filter="bindings.members=serviceAccount:$SA" \
+             --format="table(bindings.role)"
+
+    #+end_src
+
+** vertexai
+
+   In this example a simple logisc regression model is trained on **VertexAI**
+   using iris dataset and the model artifact is strored in gcs bucket. The
+   validation task WAIT for **VetrtexAi** custom job to finish and load the
+   model artifacts and print model parameters
+
+   ```mermaid
+   flowchart TD
+   A[Vertex AI Training] --> B[Validation]
+   ```
+
+   * Prepare the infra
+
+      #+begin_src sh
+        # NOTE: Setting project id and service account
+        export PROJECT_ID="mlops-project-id"
+        SA=service-account@mlops-project-id.iam.gserviceaccount.com
+
+        # NOTE: enable vertexai in google cloud
+        gcloud services enable aiplatform.googleapis.com \
+               --project "$PROJECT_ID"
+
+        # NOTE: add vetexai permission to service account
+        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+               --member="serviceAccount:$SA" \
+               --role="roles/aiplatform.user"
+
+        # NOTE: check vertexai is enabled
+        gcloud services list --enabled --project "$PROJECT_ID" | grep -E 'aiplatform|compute|storage'
+
+        # NOTE: Verify IAM permissions (policy)
+        gcloud projects get-iam-policy "$PROJECT_ID" \
+               --flatten="bindings[].members" \
+               --filter="bindings.members=serviceAccount:$SA" \
+               --format="table(bindings.role)"
+
+
+        # NOTE: setting artifacts registry
+        export REPO="model-artifacts"
+        export LOCATION="us"
+
+
+        # NOTE: enable artifacts registry service
+        gcloud services enable artifactregistry.googleapis.com --project "$PROJECT_ID"
+
+
+        # NOTE: create the artifacts registry for docker images
+        gcloud artifacts repositories create "$REPO" \
+               --project "$PROJECT_ID" \
+               --repository-format=docker \
+               --location="$LOCATION" \
+               --description="Training images for Vertex AI"
+
+
+        # NOTE: docker pull and push form the location
+        # For LOCATION in "us" (location-docker.pkg.dev) use us-docker.pkg.dev, "europe" -> europe-docker.pkg.dev, "asia" -> asia-docker.pkg.dev
+        gcloud auth configure-docker ${LOCATION}-docker.pkg.dev
+
+
+        # NOTE: setting reading/pull access to the service acccount
+        cloud projects add-iam-policy-binding "$PROJECT_ID" \
+              --member="serviceAccount:$SA" \
+              --role="roles/artifactregistry.reader"
+
+
+
+      #+end_src
+
+   * build app (this is usually in another an manged by different team but keep
+     this together for simplicity)
+
+     #+begin_src sh
+       # NOTE: build docker linux/amd64 image with the model
+       # VertexAI is going to use this image to train the model
+       python3 build_app.py
+     #+end_src
+
+* composer dags
+
+   See: composer_deployment.org
+
+   * hello.py
+   * composer_checks.py
+   * package_requirement_and_write_data_checks.py

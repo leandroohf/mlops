@@ -1,0 +1,142 @@
+
+
+Composer is airflow set and ran by google as service
+
+
+* How to set composer
+
+
+  #+begin_src sh
+    # NOTE: set projects and google account
+    gcloud projects list
+
+    # gcloud config set project <project_ID>
+    PROJECT="mlops-project-id"
+    REGION=us-central1
+    ENV=my-composer
+
+    gcloud config set project $PROJECT
+
+    gcloud auth list
+    gcloud config set account `ACCOUNT`
+
+    # NOTE: lis existing service  accounts in the project
+    gcloud iam service-accounts list \
+           --project=mlops-project-id
+
+    # NOTE: selecting existing service account
+    SA_EMAIL="bike-share-job@mlops-project-id.iam.gserviceaccount.com"
+
+    # NOTE: enable composer API
+    gcloud services enable composer.googleapis.com
+
+
+    # NOTE: setting cloud comoser permissions for the service account
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+           --member="serviceAccount:$SA_EMAIL" \
+           --role="roles/composer.worker"
+
+    # service agent permission
+    PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format="value(projectNumber)")"
+    echo "PROJECT_NUMBER=$PROJECT_NUMBER"
+
+    gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+           --member="serviceAccount:service-${PROJECT_NUMBER}@cloudcomposer-accounts.iam.gserviceaccount.com" \
+           --role="roles/composer.ServiceAgentV2Ext"
+
+
+    # NOTE: create the coposer env
+    gcloud composer environments create "$ENV" \
+           --location="$REGION" \
+           --service-account="$SA_EMAIL"
+    # (Optional) You can pin a version with:
+    #   --image-version="composer-3-airflow-2.9.x"
+
+    # NOTE: checking if is running
+    ggcloud config get-value project
+    gcloud composer environments list --locations="$REGION"
+
+    mlops-project-id
+    us-central1
+    ┌─────────────┬─────────────┬─────────┬─────────────────────────────┐
+    │     NAME    │   LOCATION  │  STATE  │         CREATE_TIME         │
+    ├─────────────┼─────────────┼─────────┼─────────────────────────────┤
+    │ my-composer │ us-central1 │ RUNNING │ 2025-09-14T18:09:18.458579Z │
+    └─────────────┴─────────────┴─────────┴─────────────────────────────┘
+
+    ggcloud composer environments describe "$ENV" \
+            --location="$REGION" \
+            --format="get(state)"
+
+    RUNNING
+
+    gcloud composer environments describe "$ENV" \
+           --location="$REGION" \
+           --format="get(config.software_config.image_version)"
+
+
+    # NOTE: DOWN SCALE COMPOSER TO PREVENT PAY A HIGH BILL
+    gcloud composer environments update "$ENV" \
+           --location="$REGION" \
+           --min-workers=0 --max-workers=1 \
+           --scheduler-count=1 \
+           --triggerer-count=0
+
+    # NOTE: add labels for billing visibility
+    gcloud composer environments update "$ENV" \
+           --location="$REGION" \
+           --update-labels=purpose=learn,owner=my-name
+
+    # NOTE: DELETE COMPOSER (when you finish the tutorial)
+    gcloud composer environments delete "$ENV" --location="$REGION" --quiet
+
+    # NOTE: check is running
+    gcloud composer environments list --locations="$REGION"
+  #+end_src
+
+
+* How to upload dags
+
+ #+begin_src sh
+   # NOTE: for deploying dags we need to upload the dag to the composer bucket
+   # 1) get the composer bucket path
+   DAG_GCS_PREFIX="$(gcloud composer environments describe "$ENV" \
+     --location="$REGION" \
+     --format='value(config.dagGcsPrefix)')"
+   echo "$DAG_GCS_PREFIX"
+   # typically looks like: gs://us-central1-my-composer-<id>-bucket/dags
+
+
+   # 2) Uploading the DAG
+   # from your repo root:
+   gcloud composer environments storage dags import \
+          --environment="$ENV" \
+          --location="$REGION" \
+          --source="./dags/hello.py"
+
+
+   # NOTE: composer env checks
+   gcloud composer environments storage dags import \
+          --environment="$ENV" --location="$REGION" \
+          --source="./dags/composer_checks.py"
+
+   # NOTE: upload with requirements.txt example
+   # Shared by all DAGS
+   printf "pandas\nrequests\n" > requirements.txt  # example
+   gcloud composer environments update "$ENV" \
+          --location="$REGION" \
+          --update-pypi-packages-from-file requirements_composer.txt
+
+
+   # 3) checking new dags were uploaded by listing DAGS
+   gcloud composer environments storage dags list \
+          --environment="$ENV" \
+          --location="$REGION"
+
+   # NOTE: Trigger a DAG run from CLI
+   # trigger once
+   gcloud composer environments run "$ENV" --location="$REGION" \
+          dags trigger -- hello_dag
+
+   # NOTE: Composer dash board has a col with link to airflow web ui
+ #+end_src

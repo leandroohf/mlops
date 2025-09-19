@@ -1,0 +1,343 @@
+* Usage cases
+
+    * monitoring pipelines (data or ml pipelines) and cloud infra
+    * move data, create tables
+    * run any job perdiocally
+
+* Basics
+
+    * DAG: define tasks dependencies (graph)
+    * Task: is an step in a DAG (node in the graph)
+        * Task instance: is specific run
+        * Dynamic tasks: task template to use to define and run based on variables during runtime
+
+    * Asset == Datasets: object created by a tasks: tables, files or databases. (Shared data)
+       * make Airflow data-aware.
+       * clarifying usages cases;
+         * use sensor instead: the external shared data is updated outside airflow by
+           another system
+         * use task dependency instead: when the external shared data is updated in the
+           same DAG by another task
+         * use **datasets**: the external shared data is updated by another dag that is managed by another team
+       * Ex:
+
+           #+begin_src text
+             .
+             ├─ dags/
+             │  ├─ producer_gcs_echo.py (manged by data engineering team)
+             │  ├─ consumer_gcs_echo.py.py (manged by data science team)
+             │  └─ shared/
+             │     ├─ __init__.py
+             │     └─ datasets.py
+             └─ requirements.txt
+           #+end_src
+
+           * Xcom: provide a way to share data between tasks (small data more
+       communications. json format)
+
+    * To push a value to XCom return it at the end of your task as with traditional operators. For large data consider intermediate storagelike buckets or temp table in a db.
+       * Example: xcom.py dag
+
+    * Sensors: are a type of operator that waits for something to happen. They can be used to detect events in systems outside of Airflow.
+
+      * Ex: Wait for a data be available in database (is like for loop checking until condition is true)
+
+             #+begin_src python
+               from airflow.decorators import task, dag
+               from airflow.providers.common.sql.sensors.sql import SqlSensor
+
+               from typing import Dict
+               from pendulum import datetime
+
+
+               def _success_criteria(record):
+                   return record
+
+
+               def _failure_criteria(record):
+                   return True if not record else False
+
+
+               @dag(
+                   description="DAG in charge of processing partner data",
+                   start_date=datetime(2021, 1, 1),
+                   schedule="@daily",
+                   catchup=False,
+               )
+               def partner():
+                   waiting_for_partner = SqlSensor(
+                       task_id="waiting_for_partner",
+                       conn_id="postgres",
+                       sql="sql/CHECK_PARTNER.sql",
+                       parameters={"name": "partner_a"},
+                       success=_success_criteria,
+                       failure=_failure_criteria,
+                       fail_on_empty=False,
+                       poke_interval=20,
+                       mode="reschedule",
+                       timeout=60 * 5,
+                   )
+
+                   @task
+                   def validation() -> Dict[str, str]:
+                       return {"partner_name": "partner_a", "partner_validation": True}
+
+                   @task
+                   def storing():
+                       print("storing")
+
+                   # NOTE: only define the dag
+                   waiting_for_partner >> validation() >> storing()
+
+               # NOTE: returns a DAG object, and Airflow registers it.
+               partner()
+             #+end_src
+
+      * wait for file in gcs
+
+         #+begin_src python
+           # NOTE: example wait for a file on gcs
+           from airflow.decorators import dag
+           from pendulum import datetime
+           from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
+
+           @dag(start_date=datetime(2024, 1, 1), schedule=None, catchup=False)
+           def wait_for_gcs_file():
+               wait_file = GCSObjectExistenceSensor(
+                   task_id="wait_file",
+                   bucket="my-bucket",
+                   object="incoming/partner_a_{{ ds }}.csv",   # jinja ok
+                   google_cloud_conn_id="google_cloud_default",
+                   poke_interval=30,
+                   timeout=60 * 20,
+                   mode="reschedule",      # frees worker slots
+                   deferrable=True,        # if your env supports deferrable sensors
+               )
+           wait_for_gcs_file()
+         #+end_src
+
+      * wait for vm to stop or terminated
+
+         #+begin_src python
+           # NOTE: example wait for vm to stop or terminated
+           from airflow.decorators import dag
+           from pendulum import datetime
+           from airflow.sensors.python import PythonSensor
+           from airflow.providers.google.cloud.hooks.compute import ComputeEngineHook
+
+           def _vm_is_stopped(project_id: str, zone: str, instance: str) -> bool:
+               """Return True when the VM is STOPPED/TERMINATED."""
+               hook = ComputeEngineHook(gcp_conn_id="google_cloud_default")
+               client = hook.get_compute_instance_client()  # wraps google-cloud-compute
+               inst = client.get(project=project_id, zone=zone, instance=instance)
+               return inst.status in {"STOPPED", "TERMINATED"}  # GCE status values
+
+           @dag(start_date=datetime(2024, 1, 1), schedule=None, catchup=False)
+           def wait_for_gce_vm_stop():
+               wait_vm = PythonSensor(
+                   task_id="wait_vm_stopped",
+                   python_callable=_vm_is_stopped,
+                   op_kwargs=dict(project_id="my-project", zone="us-central1-a", instance="etl-runner"),
+                   poke_interval=30,
+                   timeout=60 * 30,
+                   mode="reschedule",
+               )
+           wait_for_gce_vm_stop()
+         #+end_src
+
+    * **Airflow operator**: execution blocks. how to run things using different approaches. Know this and all ecisting operators shold speedup and make easy todo things in airflow. You should be working
+     more with this.
+
+      *  PythonOperator = tasks: runs python code locally (airflow server)
+
+        #+begin_src python
+           from airflow.providers.standard.operators.python import PythonOperator
+
+           def _my_python_function():
+               print("Hello world!")
+
+           my_task = PythonOperator(
+               task_id="my_task",
+               python_callable=_my_python_function,
+           )
+
+        #+end_src
+
+      * BashOperator: runs bash scripts locally (airflow server)
+
+          #+begin_src python
+            from airflow.providers.standard.operators.bash import BashOperator
+
+            my_task = BashOperator(
+                task_id="my_task",
+                bash_command="echo 'Hello world!'",
+            )
+          #+end_src
+
+      * SQLExecuteQueryOperator: run sql queries
+
+          #+begin_src python
+            from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+
+            my_task = SQLExecuteQueryOperator(
+                task_id="my_task",
+                sql="SELECT * FROM my_table",
+                database="<my-database>",
+                conn_id="<my-connection>",
+            )
+          #+end_src
+
+     * Deferrable Operators (asynchronous operators):
+
+       * Deferrable operators leverage the Python asyncio library to
+         efficiently run tasks waiting for an external resource to
+         finish.
+
+       * This frees up your workers and allows you to use resources more
+         effectively.
+
+* More operators from cloud providers
+
+  * KubernetesPodOperator: Execute a task in a Kubernetes Pod. **Task is defined by docker image**
+
+    #+begin_src python
+      from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+
+      my_task = KubernetesPodOperator(
+          task_id="my_task",
+          kubernetes_conn_id="<my-kubernetes-connection>",
+          name="<my-pod-name>",
+          namespace="<my-namespace>",
+          image="python:3.12-slim", # Docker image to run
+          cmds=["python", "-c"], # Command to run in the container
+          arguments=["print('Hello world!')"], # Arguments to the command
+      )
+    #+end_src
+
+    * File transferring
+
+      * FileTransferOperator: Copies a file from a source to a destination.
+
+        * This streams the file from the source to the destination if
+          required , so it does not need to fit into memory.
+
+          #+begin_src python
+            from airflow import DAG
+            from airflow.utils.dates import days_ago
+            from airflow.providers.common.io.operators.file_transfer import FileTransferOperator
+
+            with DAG(
+                dag_id="hello_world_file_transfer",
+                start_date=days_ago(1),
+                schedule_interval=None,
+                catchup=False,
+                tags=["example"],
+            ) as dag:
+
+                # Hello World example - copy file locally
+                hello_world_transfer = FileTransferOperator(
+                    task_id="hello_world_transfer",
+                    source="/tmp/hello.txt",        # must exist
+                    destination="/tmp/hello_copy.txt",
+                    source_conn_id=None,            # local
+                    destination_conn_id=None        # local
+                )
+
+                hello_world_transfer
+          #+end_src
+
+        * LocalFilesystemToS3Operator
+
+            #+begin_src python
+              @task
+              def simple_upload():
+                  """
+                  Before running the DAG, set the following in an Airflow
+                  or Environment Variable:
+                  - key: aws_configs
+                  - value: { "s3_bucket": [bucket_name], "s3_key_prefix": [key_prefix],
+                            "redshift_table": [table_name]}
+                  Fully replacing [bucket_name], [key_prefix], and [table_name].
+                  """
+                  upload_file = LocalFilesystemToS3Operator(
+                      task_id="upload_to_s3",
+                      filename=CSV_FILE_PATH,
+                      dest_key="{{ var.json.aws_configs.s3_key_prefix }}/" + CSV_FILE_PATH,
+                      dest_bucket="{{ var.json.aws_configs.s3_bucket }}",
+                      aws_conn_id="aws_default",
+                      replace=True,
+                  )
+            #+end_src
+
+* Atronomer basics
+
+   * The Astro CLI runs Airflow in a Docker-based environment.
+     * because of that it is required to mount vloumes in the running container
+     * All astronomer projects has Dockerfile in the root of the repo
+
+       #+begin_src sh
+         cat Dockerfile
+         FROM astrocrpublic.azurecr.io/runtime:3.0-8
+       #+end_src
+
+     * requires docker
+
+       #+begin_src sh
+         # NOTE: all astronomer airflow related running container
+         docker ps
+         CONTAINER ID   IMAGE                                    COMMAND                  CREATED             STATUS             PORTS                      NAMES
+         a42d5b276071   learning-airflow_3dca85/airflow:latest   "tini -- /entrypoint…"   About an hour ago   Up About an hour                              learning-airflow_3dca85-dag-processor-1
+         a403ff16bfa0   learning-airflow_3dca85/airflow:latest   "tini -- /entrypoint…"   About an hour ago   Up About an hour   127.0.0.1:8080->8080/tcp   learning-airflow_3dca85-api-server-1
+         11f44f328c6e   learning-airflow_3dca85/airflow:latest   "tini -- /entrypoint…"   About an hour ago   Up About an hour                              learning-airflow_3dca85-scheduler-1
+         c71cfe5373f3   learning-airflow_3dca85/airflow:latest   "tini -- /entrypoint…"   About an hour ago   Up About an hour                              learning-airflow_3dca85-triggerer-1
+         e1218c274009   postgres:12.6                            "docker-entrypoint.s…"   5 days ago          Up About an hour   127.0.0.1:5432->5432/tcp   learning-airflow_3dca85-postgres-1
+
+
+         # NOTE: astro command to list airflow running
+         astro dev ps
+         Name						State	Ports
+         learning-airflow_3dca85-triggerer-1		running
+         learning-airflow_3dca85-dag-processor-1		running
+         learning-airflow_3dca85-api-server-1		running		8080
+         learning-airflow_3dca85-scheduler-1		running
+         learning-airflow_3dca85-db-migration-1		exited
+         learning-airflow_3dca85-postgres-1		running		5432
+       #+end_src
+
+   * astronomer utilizes docker-copose to orchestrator all docker containers
+     * to replace deafult orchestration, write the file:
+       docker-compose.override.yml in the same folder as the Dockerfile
+
+   * main and useful astro commands
+
+     #+begin_src sh
+       # NOTE: list main commands
+       astro dev cheat-sheet
+
+       # NOTE: start a project
+       astro dev init --name astronomer_airflow
+
+       # NOTE: start or restart airflow
+       astro dev start
+       astro dev restart
+
+       # NOTE: for cross platform
+       DOCKER_DEFAULT_PLATFORM=linux/amd64 astro dev restart
+
+       # NOTE: basic checks
+       astro dev ps
+       astro dev stop
+       astro dev kill
+
+       # NOTE: exec commands inside the docekr
+
+       # not working for me
+       astro dev exec scheduler -- bash -lc 'printenv AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT | cut -c1-120; echo "... (ok)"; airflow connections get google_cloud_default'\n
+
+       # but this works
+       docker exec -it astronomer_airflow_01d3ab-scheduler-1    bash -lc 'printenv AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT | cut -c1-120; echo "... (ok)"; airflow connections get google_cloud_default'
+     #+end_src
+
+
+
+

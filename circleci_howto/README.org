@@ -1,8 +1,4 @@
 
-**WIP**
-
-AGORA MUDOU TUDO
-
 * NOTES
 
   * I move the orignal repo https://github.com/leandroohf/circleci_howto to https://github.com/leandroohf/mlops/circleci_howto
