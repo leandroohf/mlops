@@ -1,0 +1,8 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks   # runs on commit
+      - id: gitleaks   # also run on push
+        name: gitleaks (pre-push)
+        stages: [push]
