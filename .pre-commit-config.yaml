@@ -5,4 +5,4 @@ repos:
       - id: gitleaks   # runs on commit
       - id: gitleaks   # also run on push
         name: gitleaks (pre-push)
-        stages: [push]
+        stages: [pre-push]
