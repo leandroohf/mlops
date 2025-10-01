@@ -23,7 +23,7 @@ def google_composer_checks():
     @task
     def show_config():
         # Environment variables commonly available in Composer
-        project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
         bucket = os.environ.get("GCS_BUCKET")  # Composer mounts this bucket at /home/airflow/gcs
         location = os.environ.get("COMPOSER_LOCATION") or os.environ.get("CLOUDSDK_COMPUTE_REGION")
         composer_env = os.environ.get("COMPOSER_ENVIRONMENT")
