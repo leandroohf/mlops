@@ -77,12 +77,12 @@ Explain all dags examples
 
     * How to use datasets
       * Context:
-        * producer dag is manages by datat enginerring team that updated
+        * producer dag is manages by data engineerring team that updated
           training data (data wharehouse)
-        * consumer dag is manged by mle team and it is tigger when training data
-          is updated
-      * The datasets is internal airflow string store in airflow interbal db.
-        airflow track the state associated to the datasets
+        * consumer dag is manged by mle team and it is trigger when training
+          data is updated
+      * The datasets is internal airflow string store in airflow internal db.
+        Airflow tracks the state associated to the datasets
       * if the datasets state is update by the dag producer that writes an csv
         file in gcs, airflow automatic trigger the consumer dag for you
 

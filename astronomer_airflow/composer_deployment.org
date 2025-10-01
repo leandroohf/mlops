@@ -5,7 +5,6 @@ Composer is airflow set and ran by google as service
 
 * How to set composer
 
-
   #+begin_src sh
     # NOTE: set projects and google account
     gcloud projects list
@@ -93,7 +92,6 @@ Composer is airflow set and ran by google as service
     # NOTE: check is running
     gcloud composer environments list --locations="$REGION"
   #+end_src
-
 
 * How to upload dags
 
