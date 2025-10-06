@@ -1,0 +1,37 @@
+* astronomer
+
+   Example of using airflow with astronomer or google composer.
+   1. We use astronomer for local deployment
+    * There are ways to deploy using astronomer infrastructure but it is not the scope of this project
+   2. We use google composer for cloud deployment
+
+* Run local
+
+#+begin_src sh
+    cd astronomer_airflow
+
+    # NOTE: init astro project
+
+    mv -v dags backup_dags
+
+    astro dev init --name astronomer_airflow
+
+    mv -v backup_dags dags
+
+    # NOTE: start dev local
+    astro dev start
+
+    # (UI at http://localhost:8080)
+#+end_src
+
+* TOC 
+
+  * astronomer README file (intial)
+    1. astronomer_airflow/README_from_astronomer_team.md
+  * DAGS: 
+    1. See dags.org
+    2. dags/ 
+  * Google Composer:
+    1. See composer_deployment.org
+  * airflow 
+    1. astronomer_airflow/airflow_cheat_sheet.org
