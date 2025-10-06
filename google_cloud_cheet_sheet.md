@@ -80,10 +80,10 @@ Quotas are limited. For instance you can use an large vm you might need to reque
 
  ## Resource Hierarchy
 
- Organization
-└── Folder(s) (Usually department, environment, geography. Useful for large and scale companies)
-    └── Project(s)
-        └── Resources (VMs, Buckets, Datasets, etc.)
+* Organization
+  * Folder(s) (Usually department, environment, geography. Useful for large and scale companies)
+    * Project(s)
+      * Resources (VMs, Buckets, Datasets, etc.)
 
 Example:
 
