@@ -4,7 +4,7 @@ This is an example of mlops mvp project. The goal is personal learnings. Decide 
 * avro
 * cloud scheduler for periodic training and inference
 
-# Bike share
+# Bike share goal
 
 Bike sharing systems struggle with bikes being in the wrong place at the wrong time.
 * Sometimes are empty
@@ -14,21 +14,31 @@ We want to predict bike net change per station to help rebalance bikes (ensure a
 
 # Architecture
 
-This pipeline runs every hour using Google Cloud Scheduler, which triggers a Cloud Run job. The job, packaged as a Docker image built and pushed via CircleCI, runs training (1_train.py) on the most recent data and immediately generates predictions (2_batch_predict.py) for the next hour. It is assumed that the total time is less than 20 minutes. 
+This pipeline runs every night using Google Cloud Scheduler, which triggers a Cloud Run job. The job, packaged as a Docker image built and pushed via CircleCI, runs training (1_train.py) on the most recent data and immediately generates predictions (2_batch_predict.py) for the next days. It is assumed that the total time is less than 30 minutes. The MVP is trained only in 1 city with multiple stations. 
 
-```mermaid
+
+```mermaid 
 flowchart TD
-    A[CircleCI Build & Deploy Image] --> B[Docker Image Pushed to Artifact Registry]
-    B --> C[GCP Cloud Run Job e.g. bike-pipeline-job]
-    D[GCP Cloud Scheduler Triggers the Job Every hour] --> C
+  subgraph CI[CI/CD]
+    A[CircleCI Build] --> B[Artifact Registry: bike-pipeline:TAG]
+  end
 
-    classDef trigger fill:transparent,stroke:#333,stroke-width:1px;
+  subgraph SCHED[Control Plane]
+    D[Cloud Scheduler<br/>02:00 America/Vancouver] -->|Run| C[Cloud Run Job<br/>bike-pipeline-job]
+  end
 
-    A:::trigger
-    B:::trigger
-    C:::trigger
-    D:::trigger
+  subgraph PIPE[Job Steps]
+    C --> T[1_train.py]
+    T --> P[2_batch_predict.py]
+  end
+
+  subgraph DATA[Storage]
+    R[(GCS raw/ dt=YYYY-MM-DD)] -.-> T
+    P --> W[(GCS predictions/ dt=YYYY-MM-DD .avro)]
+    P --> M[(GCS metrics/ dt=YYYY-MM-DD .json)]
+  end
 ```
+
 
 The trained model and predictions are stored in GCS under a path starting with prod/version/, mirroring the local project structure.
 
@@ -58,7 +68,7 @@ tree -L 2
 
 NOTEs: 
 * For simplicity we are overwritting previous models after retraining
-* Assuming training time are fast (< 20minutes, cloud job has processing time limit. It is design for short jobs)
+* Assuming training time are fast 
 
 # Setting infra
 
@@ -105,10 +115,41 @@ The remainning steps can be seen in the script `setup_infra.sh`
    base64 -i security/gcp-bike-share-key.json | pbcopy
    ```
 
-# Next: how to scale 
+# Scale horizontaly
 
-  This project serves as a limited **MVP** and is not designed to scale. It demonstrates a basic batch pipeline for bike net change predictions, but as the number of bike stations grows and are spreaded across multiple cities the current architecture will not be sufficient.
+  n this section we describe the evolution of the MVP project. The requirements changed. The project runs predictions for a couple more cities with multiple stations and trains more often. Models are trained 3 times a day: 4:00am, 10:00am, and 4:00pm. The model takes about 2 hours to train. Every time the batch prediction script runs it will generate predictions for the next 6 hours for all cities and stations: 6:00am–12:00pm, 12:00pm–6:00pm, and 6:00pm–12:00am. It is assumed that the service is closed after midnight.
 
-  To scale this project, I would:
-  1. replace the cloud scheduler by airflwo managed by astronomer
-  1. Redesign the architecture to support parallelism and distributed processing—
+
+  Under this new set of requirements the project will change:
+
+   1. replace the simple scheduler by a scheduler/orchestrator (Airflow/Google Cloud Composer)
+   2. Airflow DAGs will start training and batch predictions on ML platforms (Google Vertex AI)
+   3. Docker images will be stored on a Docker registry service (Google Artifact Registry)
+  
+
+  ```mermaid
+  flowchart TD
+    subgraph CI[CI/CD]
+      A[CircleCI Build] --> B[Artifact Registry: bike-pipeline:TAG]
+    end
+
+    subgraph SCHED[Control Plane]
+      D1[Airflow/Cloud Composer<br/>Train DAG<br/>04:00, 10:00, 16:00 PT] -->|Trigger| T
+      D2[Airflow/Cloud Composer<br/>Batch Predict DAG<br/>06:00, 12:00, 18:00 PT] -->|Trigger| P
+    end
+
+    subgraph PIPE[Job Steps]
+      T[Vertex AI Custom Job<br/>runs 1_train.py 2h]
+      P[Vertex AI Batch Prediction<br/>runs 2_batch_predict.py 6h windows]
+    end
+
+    subgraph DATA[Storage]
+      R[(GCS raw/ dt=YYYY-MM-DD)] -.-> T
+      P --> W[(GCS predictions/ dt=YYYY-MM-DD .avro)]
+      P --> M[(GCS metrics/ dt=YYYY-MM-DD .json)]
+    end
+  ```
+
+  # Scale verticaly
+
+     TODO
