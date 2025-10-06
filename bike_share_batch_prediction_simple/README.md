@@ -117,7 +117,7 @@ The remainning steps can be seen in the script `setup_infra.sh`
    base64 -i security/key.json | pbcopy
    ```
 
-# Scale horizontaly
+# Scale verticaly
 
   n this section we describe the evolution of the MVP project. The requirements changed. The project runs predictions for a couple more cities with multiple stations and trains more often. Models are trained 3 times a day: 4:00am, 10:00am, and 4:00pm. The model takes about 2 hours to train. Every time the batch prediction script runs it will generate predictions for the next 6 hours for all cities and stations: 6:00am–12:00pm, 12:00pm–6:00pm, and 6:00pm–12:00am. It is assumed that the service is closed after midnight.
 
@@ -152,6 +152,35 @@ The remainning steps can be seen in the script `setup_infra.sh`
     end
   ```
 
-  # Scale verticaly
+  # Scale horizontaly
 
-     TODO
+    Because the project grew and is being used by many more cities, running batch predictions on a single node in Vertex AI is slow, and predictions should be ready as soon as possible. Therefore, our next solution is to replace batch predictions on Vertex AI by running them in a cluster in parallel (Google GKE). We can start by parallelizing by regions: all predictions for all cities and stations in a single region will run in the same pod.
+
+    ```mermaid
+    flowchart TD
+    subgraph CI[CI/CD]
+      A[CircleCI Build] --> B[Artifact Registry: bike-pipeline:TAG]
+    end
+
+    subgraph ORCH[Orchestrator]
+      D1[Airflow/Cloud Composer<br/>Train DAG<br/>04:00, 10:00, 16:00 PT] -->|Trigger| T
+      D2[Airflow/Cloud Composer<br/>Batch Predict DAG<br/>hourly windows] -->|Fan-out per region| K
+    end
+
+    subgraph TRAIN[Training]
+      T[Vertex AI Custom Job<br/>runs 1_train.py ~2h]
+    end
+
+    subgraph GKE[Batch Predictions on Google GKE parallel]
+      K[Airflow → K8s Jobs] --> P1[Pod region=West<br/>runs 2_batch_predict.py]
+      K --> P2[Pod region=East<br/>runs 2_batch_predict.py]
+      K --> P3[Pod region=Central<br/>runs 2_batch_predict.py]
+    end
+
+    subgraph DATA[Storage]
+      R[(GCS raw/ dt=YYYY-MM-DD)] -.-> T
+      P1 --> W1[(GCS predictions/ region=West/ dt=YYYY-MM-DD .avro)]
+      P2 --> W2[(GCS predictions/ region=East/ dt=YYYY-MM-DD .avro)]
+      P3 --> W3[(GCS predictions/ region=Central/ dt=YYYY-MM-DD .avro)]
+    end
+  ```
