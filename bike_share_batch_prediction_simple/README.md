@@ -78,27 +78,29 @@ NOTEs:
 1. create clooud scheduler
 
 ```sh
-       # NOTE: Create a service account and download its key
+  export PROJECT_ID="mlops-project-id"
+  export SA="service-account"  # service account name (no domain)
 
-       # NOTE: create iam for service accounts
-       gcloud iam service-accounts create bike-share-job \
-              --project=mlops-project-abacabb \
-              --description="Service account for bike share project" \
-              --display-name="bike-share-service-account"
+  # NOTE: Create a service account and download its key
+  # NOTE: create iam for service accounts
+  gcloud iam service-accounts create "$SA" \
+        --project="$PROJECT_ID" \
+        --description="Service account for bike share project" \
+        --display-name="service-account-name"
 
-       # lits only services accounts
-       gcloud iam service-accounts list --project=mlops-project-abacabb
+  # list only service accounts
+  gcloud iam service-accounts list --project="$PROJECT_ID"
 
-       # NOTE: Grant access to gcs 
-       gcloud projects add-iam-policy-binding mlops-project-abacabb \
-              --member="serviceAccount:bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com" \
-              --role="roles/storage.admin"
+  # NOTE: Grant access to GCS
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+        --member="serviceAccount:${SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+        --role="roles/storage.admin"
 
-       # NOTE: Generate and download the key file
-       # run the command bellow
-       gcloud iam service-accounts keys create ~/gcp-bike-share-key.json \
-              --iam-account=bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com \
-              --project=mlops-project-abacabb
+  # NOTE: Generate and download the key file
+  gcloud iam service-accounts keys create ~/key.json \
+        --iam-account="${SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+        --project="$PROJECT_ID"
+
 ```
 
 The remainning steps can be seen in the script `setup_infra.sh`
@@ -109,10 +111,10 @@ The remainning steps can be seen in the script `setup_infra.sh`
    1. Enviroment variable
       * Add a new env variable
 
-   1. Copy the base64 contents of the security/gcp-bike-share-key.json
+   1. Copy the base64 contents of the security/key.json
 
    ```sh
-   base64 -i security/gcp-bike-share-key.json | pbcopy
+   base64 -i security/key.json | pbcopy
    ```
 
 # Scale horizontaly
