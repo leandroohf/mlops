@@ -35,32 +35,35 @@ Examples of IAM:
 An **IAM policy** binds a principal (user, group, or service account) to one or more roles **on a resource**. They are similar to `/etc/group` or `/etc/sudoers` in Linux, where you map users to groups and assign privileges.
 
 ```sh
-  # NOTE: create iam and mage iam for servoce accounts
-  gcloud iam service-accounts create bike-share-job \
-        --project=mlops-project-abacabb \
-        --description="Service account for bike share project" \
-        --display-name="bike-share-service-account"
+  export PROJECT_ID="mlops-project-id"
+  export SA="service-account"          # service account to create/manage
+  
+  # NOTE: create IAM service account
+  gcloud iam service-accounts create "$SA" \
+    --project="$PROJECT_ID" \
+    --description="Service account for bike share project" \
+    --display-name="bike-share-service-account"
 
-  # list all accounts
-  gcloud projects get-iam-policy mlops-project-abacabb
+  # list all IAM bindings on the project
+  gcloud projects get-iam-policy "$PROJECT_ID"
 
-  # lits only services accounts
-  gcloud iam service-accounts list --project=mlops-project-abacabb
+  # list only service accounts
+  gcloud iam service-accounts list --project="$PROJECT_ID"
 
-  # delete
+  # delete a service account (example)
   gcloud iam service-accounts delete \
-        pipeline-job-sa@mlops-project-abacabb.iam.gserviceaccount.com \
-        --project=mlops-project-abacabb
+    "${SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --project="$PROJECT_ID"
 
-  # NOTE: Grant access
-  gcloud projects add-iam-policy-binding mlops-project-abacabb \
-        --member="serviceAccount:bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com" \
-        --role="roles/storage.admin"
+  # NOTE: grant access (example: Storage Admin)
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/storage.admin"
 
-  # NOTE: Generate and download the key file
-  gcloud iam service-accounts keys create ~/gcp-bike-share-key.json \
-        --iam-account=bike-share-job@mlops-project-abacabb.iam.gserviceaccount.com \
-        --project=mlops-project-abacabb
+  # NOTE: generate and download a key file
+  gcloud iam service-accounts keys create ~/key.json \
+    --iam-account="${SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --project="$PROJECT_ID"
 ```
 
 ## Billing Accounts
@@ -78,9 +81,30 @@ Quotas are limited. For instance you can use an large vm you might need to reque
  ## Resource Hierarchy
 
  Organization
-└── Folder(s)
+└── Folder(s) (Usually department, environment, geography. Useful for large and scale companies)
     └── Project(s)
         └── Resources (VMs, Buckets, Datasets, etc.)
+
+Example:
+
+```yaml
+Organization
+└─ Folder: Prod
+   ├─ Project: app-prod
+   └─ Project: data-prod
+└─ Folder: Non-Prod
+   ├─ Project: app-dev
+   └─ Project: app-staging
+
+# NOTE: by departments
+Organization
+└─ Folder: Financing
+   ├─ Project: payments
+   └─ Project: revenue
+└─ Folder: Data Science
+   ├─ Project: pricing
+   └─ Project: customer segmentation
+```
 
 ## Regions and Zones
 
@@ -165,7 +189,7 @@ gcloud projects add-iam-policy-binding [PROJECT_ID] \
   --member="user:someone@example.com" --role="roles/viewer"     # Grant access
 ```
 
-* cloud stirage 
+* cloud storage 
 
 ```sh
 gcloud storage ls                                # List buckets
