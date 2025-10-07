@@ -16,7 +16,7 @@ We want to predict bike net change per station to help rebalance bikes (ensure a
 
 This pipeline runs every night using Google Cloud Scheduler, which triggers a Cloud Run job. The job, packaged as a Docker image built and pushed via CircleCI, runs training (1_train.py) on the most recent data and immediately generates predictions (2_batch_predict.py) for the next days. It is assumed that the total time is less than 30 minutes. The MVP is trained only in 1 city with multiple stations. 
 
-
+NOTEs: build with help of LLMs
 ```mermaid 
 flowchart TD
   subgraph CI[CI/CD]
@@ -129,6 +129,7 @@ The remainning steps can be seen in the script `setup_infra.sh`
    3. Docker images will be stored on a Docker registry service (Google Artifact Registry)
   
 
+  NOTEs: build with help of LLMs
   ```mermaid
   flowchart TD
     subgraph CI[CI/CD]
@@ -156,6 +157,7 @@ The remainning steps can be seen in the script `setup_infra.sh`
 
     Because the project grew and is being used by many more cities, running batch predictions on a single node in Vertex AI is slow, and predictions should be ready as soon as possible. Therefore, our next solution is to replace batch predictions on Vertex AI by running them in a cluster in parallel (Google GKE). We can start by parallelizing by regions: all predictions for all cities and stations in a single region will run in the same pod.
 
+    NOTEs: build with help of LLMs
     ```mermaid
     flowchart TD
     subgraph CI[CI/CD]
