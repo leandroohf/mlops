@@ -1,0 +1,237 @@
+
+* TL;DR
+
+   * Artifacts are **not passed in memory**; they’re files under .path.
+   * Write to .path; **KFP/Vertex takes care of syncing to .uri and back for the
+     next step**.
+   * You only need to manage a “shared location” if you decide to skip artifacts
+     and do your own storage.
+   * You can pass small data (basic types) between components by using
+     **metadata** attributes
+
+* KFP Dataset
+
+   Datasets are a way to pass data between components in a pipeline. They are
+   essentially pointers to data stored in a remote location, such as Google
+   Cloud Storage (GCS).
+
+   Attributes:
+    * path (str): The local path where the dataset is downloaded when the
+      component runs.
+    * uri (str): The URI of the dataset in GCS.
+    * type (str): The type of the dataset, e.g., "csv", "parquet".
+    * metadata (dict): Additional metadata about the dataset.
+    * name (str): The name of the dataset. Ex: preprocessed_data
+
+* Metrics
+
+     * For scalar metrics, use the Metrics artifact’s helpers: Gain for free nice UI
+       #+begin_src python
+         from kfp.dsl import Metrics
+         @component
+         def eval(metrics: Output[Metrics], acc: float):
+             metrics.log_metric("accuracy", acc)
+       #+end_src
+
+     * For graphs tables
+       #+begin_src python
+         # NOTE: confucion matrix
+         @component(base_image="python:3.11")
+         def show_confusion_matrix():
+             import json
+             ui = {
+                 "outputs": [
+                     {
+                         "type": "confusion_matrix",
+                         "format": "csv",
+                         "source": "class,cat,dog\ncat,45,5\ndog,3,47\n",
+                         "labels": ["cat", "dog"],
+                     }
+                 ]
+             }
+             with open("/mlpipeline-ui-metadata.json", "w") as f:
+                 json.dump(ui, f)
+
+
+         # NOTE: mae, rmse and r2
+         @component(base_image="python:3.11")
+         def show_table():
+             import json, os
+             ui = {
+                 "outputs": [
+                     {
+                         "type": "table",
+                         "table": {
+                             "headers": ["metric", "value"],
+                             "rows": [
+                                 ["mae", 0.124],
+                                 ["rmse", 0.256],
+                                 ["r2", 0.91],
+                             ],
+                         },
+                     }
+                 ]
+             }
+             with open("/mlpipeline-ui-metadata.json", "w") as f:
+                 json.dump(ui, f)
+       #+end_src
+
+     * For graphs
+
+        #+begin_src python
+          # NOTE: ROC graph
+          from kfp import dsl
+          from kfp.dsl import component, Output, ClassificationMetrics
+
+          @component(base_image="python:3.11", packages_to_install=["scikit-learn"])
+          def log_roc(metrics: Output[ClassificationMetrics]):
+              from sklearn.datasets import load_wine
+              from sklearn.ensemble import RandomForestClassifier
+              from sklearn.model_selection import train_test_split, cross_val_predict
+              from sklearn.metrics import roc_curve
+
+              X, y = load_wine(return_X_y=True)
+              # make it binary for demo
+              y = (y == 1)
+
+              X_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=42)
+              clf = RandomForestClassifier(n_estimators=50, random_state=42).fit(X_tr, y_tr)
+
+              # probabilities on train for a simple demo
+              proba = cross_val_predict(clf, X_tr, y_tr, cv=3, method="predict_proba")[:, 1]
+              fpr, tpr, thr = roc_curve(y_tr, proba)
+
+              metrics.log_roc_curve(fpr.tolist(), tpr.tolist(), thr.tolist())
+
+
+          # NOTE: for precision recal curve no NATIVE solution
+          # need to save as png and render as markdown
+          from kfp.dsl import component, Output, Artifact
+
+          @component(
+              base_image="python:3.11",
+              packages_to_install=["matplotlib","scikit-learn"]
+          )
+          def pr_png(out_img: Output[Artifact]):
+              import os, matplotlib.pyplot as plt
+              from sklearn.datasets import make_classification
+              from sklearn.linear_model import LogisticRegression
+              from sklearn.model_selection import train_test_split
+              from sklearn.metrics import precision_recall_curve, average_precision_score
+
+              X, y = make_classification(n_samples=2000, n_features=10, random_state=7, weights=[0.9, 0.1])
+              X_tr, X_te, y_tr, y_te = train_test_split(X, y, random_state=7)
+
+              clf = LogisticRegression(max_iter=1000).fit(X_tr, y_tr)
+              scores = clf.predict_proba(X_te)[:, 1]
+              precision, recall, _ = precision_recall_curve(y_te, scores)
+              ap = average_precision_score(y_te, scores)
+
+              os.makedirs(out_img.path, exist_ok=True)
+              fig = plt.figure()
+              plt.plot(recall, precision)
+              plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title(f"PR (AP={ap:.3f})")
+              fig.savefig(f"{out_img.path}/pr.png", format="png", bbox_inches="tight")
+        #+end_src
+       * NOTEs:
+
+         * If you also want it to render in the UI, keep your Markdown component
+           (base64 embed) or write mlpipeline-ui-metadata.json. But for pure
+           simplicity and persistence, either approach is fine: Your version
+           (Markdown + base64) → renders nicely in the UI.
+
+         * PNG Artifact → easy to pass between steps; add a tiny
+           Markdown/metadata step if you also want it visualized.
+
+* Model registry (VertexAI Model registry)
+
+  * It is only for Model (double checking)
+
+  #+begin_src python
+    from kfp.dsl import component, Input, Model
+
+    @component(
+        base_image="python:3.11",
+        packages_to_install=["google-cloud-aiplatform>=1.49.0"]
+    )
+    def publish_to_registry(
+        trained_model: Input[Model],   # produced earlier; directory with model files
+        project: str,
+        location: str,
+        model_name: str,               # stable registry "container" name, e.g. "my_churn_model"
+        display_name: str = "my_churn_model",
+        serving_image: str = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-4:latest",
+        set_aliases: str = "champion,latest"  # comma-separated aliases for this version
+    ):
+        """
+        Uploads a new **version** under `model_name` in Vertex AI Model Registry.
+        If `model_name` doesn't exist, it's created; otherwise a new version is added.
+        """
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=project, location=location)
+
+        # `trained_model.path` is the artifact directory (usually a GCS URI in Vertex Pipelines)
+        artifact_uri = trained_model.path
+
+        model = aiplatform.Model.upload(
+            display_name=display_name,
+            artifact_uri=artifact_uri,
+            serving_container_image_uri=serving_image,
+            model_id=model_name,  # create or add version under this logical model
+        )
+
+        # Optionally tag this version with aliases like "champion"/"latest"
+        aliases = [a.strip() for a in set_aliases.split(",") if a.strip()]
+        if aliases:
+            model.add_version_aliases(aliases)
+  #+end_src
+
+* Run local with Docker
+
+   #+begin_src sh
+     # NOTE: .env
+     # IMAGE_URI=vertexai-image:v1
+
+     # NOTE: build image locally
+     docker build -t vertexai-image:v1 .
+
+     # NOTE: run local
+     python pipeline.py
+     16:49:34.270 - INFO - Executing task 'preprocess'
+     16:49:34.270 - INFO - Streamed logs:
+
+         Found image 'vertexai-image:v1'
+
+         WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Looking for component `preprocess` in --component_module_path `/tmp/tmp.rKEV9vXbDC/ephemeral_component.py`
+         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Loading KFP component "preprocess" from /tmp/tmp.rKEV9vXbDC/ephemeral_component.py (directory "/tmp/tmp.rKEV9vXbDC" and module name "ephemeral_component")
+         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Got executor_input:
+         [preprocess] n_rows: 500
+         [preprocess] sys.path: ['/tmp/tmp.rKEV9vXbDC', '/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+         [debug] local path: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
+         [debug] cloud uri: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
+         Writing Parquet to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/preprocessed.parquet
+         Writing CSV for debug to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/preprocessed.csv
+         [preprocess] done -> /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset with shape=(500, 4)
+         [KFP Executor 2025-10-08 23:49:35,432 INFO]: Wrote executor output file to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/executor_output.json.
+
+     16:49:35.526 - INFO - Task 'preprocess' finished with status SUCCESS
+     16:49:35.526 - INFO - Task 'preprocess' outputs:
+         output_dataset: Dataset( name='preprocessed_data',
+                                  uri='/Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset',
+                                  metadata={'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]} )
+         Output: Dataset( name='preprocessed_data',
+                          uri='/Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset',
+                          metadata={'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]} )
+     ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     Preprocessed data name: preprocessed_data
+     Preprocessed data at: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
+     Preprocessed data URI: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
+     Preprocessed data metadata: {'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]}
+
+     # NOTE: inspecting artifacts stored locally (managed by kfp)
+     ls local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/
+     preprocessed.csv     preprocessed.parquet
+   #+end_src
+

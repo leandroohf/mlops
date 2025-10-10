@@ -1,0 +1,11 @@
+kfp>=2.7.0
+google-cloud-aiplatform
+google-cloud-storage
+numpy
+pandas
+scikit-learn
+joblib
+pyarrow
+dotenv
+docker # NOTE: run locally with docker
+loguru
