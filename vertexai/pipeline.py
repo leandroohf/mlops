@@ -132,12 +132,13 @@ def publish_best_model(
     print(f"[validate] winner: {winner_model.metadata.get('label')} with r2={max(r2_model1, r2_model2):.3f}")
 
     bucket_name = os.environ.get("BUCKET_NAME")
-    print(f"[validate] publishing to bucket: {bucket_name}")
+    env = os.environ.get("env", "dev")
+    print(f"[validate] publishing to bucket: {bucket_name}; env: {env}")
 
     # NOTE: publish to GCS bucket
     publisher = GCSArtifactHandler(
         bucket_name=bucket_name,
-        root_path="vertexai/prod/models")
+        root_path=f"vertexai/{env}/models")
     
     publish_path = "best.joblib"
     publisher.save(best_model, publish_path)
@@ -155,10 +156,12 @@ def pipeline(n_rows: int = 1000, model1_name: str = "model1", model2_name: str =
     m1 = train(preprocessed_dataset=pre.outputs["preprocessed_dataset"], model_name=model1_name)
     m1.set_cpu_limit("4")
     m1.set_memory_limit("16G")
+    m1.set_env_variable("env", ENV) # NOTE: setting env var inside an component
 
     m2 = train(preprocessed_dataset=pre.outputs["preprocessed_dataset"], model_name=model2_name)
     m2.set_cpu_limit("4")
     m2.set_memory_limit("16G")
+    m2.set_env_variable("env", ENV) # NOTE: setting env var inside an component
 
     p = publish_best_model(
         preprocessed_dataset=pre.outputs["preprocessed_dataset"],
