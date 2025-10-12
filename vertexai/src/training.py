@@ -3,8 +3,6 @@ import joblib
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
-from sklearn.model_selection import train_test_split
-
 
 class ModelTrainer():
     
@@ -26,3 +24,4 @@ class ModelTrainer():
         assert self._model is not None, "Model is not trained yet. Call fit() first."
 
         return self._model.predict(X)
+

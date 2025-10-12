@@ -9,9 +9,7 @@ import joblib
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from src.preprocessing import Preprocessor
-from src.training import ModelTrainer
-from src.artifact_io import LocalArtifactHandler
+from src.executor import train_model, run_preprocess
 
 def main():
 
@@ -26,7 +24,7 @@ def main():
     print(f"[debug] numpy       : {np_ver}")
 
     preprocess_dir =  "preprocessed/"
-    preprocess(output_dir=preprocess_dir, n_rows=1000)
+    run_preprocess(output_dir=preprocess_dir, n_rows=1000)
     print(f"[preprocess] done -> {preprocess_dir}")
 
     model_dir = "models/"

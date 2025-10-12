@@ -11,7 +11,7 @@ Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
 
   #+begin_src sh
     PROJECT_ID="mlops-project-abacabb"
-    REGION="us-west1" # e.g., us-central1, us-east1, europe-west4
+    REGION="us-central1" # e.g., us-central1, us-east1, europe-west4
     BUCKET="gs://${PROJECT_ID}-bike-share-project-bucket"
 
     # NOTE: enable VerexAI service
@@ -25,12 +25,14 @@ Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
 
     # create the artifacts registry for docker images if not exists
     export REPO="model-artifacts"
-    export LOCATION="us"
+
+    # NOTE: for list of all regions
+    gcloud artifacts locations list
 
     gcloud artifacts repositories create "$REPO" \
            --project "$PROJECT_ID" \
            --repository-format=docker \
-           --location="$LOCATION" \
+           --location="$REGION" \
            --description="Training images for Vertex AI"
 
     # setting docker authentication
@@ -40,10 +42,24 @@ Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
     # NOTE: build and push image
     # this can be ran by circleci pipelines (not the scope on this project)
     export TAG="vrtx1"
+    export IMAGE="vertexai-pipe-image"
     export IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$TAG"
-    docker build -t "$IMAGE_URI" .
-    docker push "$IMAGE_URI"
+
+    # NOTE: set arch (docker build cross platform) Because I am on Mac
+    docker buildx create --use --name vertexamd64 2>/dev/null || docker buildx use vertexamd64
+
+
+    # NOTE: builds with target arch = linux/amd64
+    # google tools n vertexai likes linux/amd64 adn I am running on linux. This cause a lot of extra steps
+    # or bug fixes
+    docker buildx build --platform linux/amd64 \
+           -t "${IMAGE_URI}" \
+           -f Dockerfile \
+           . --push
+
+    docker buildx imagetools inspect "${IMAGE_URI}" | grep -A2 "Platform:"
+
+    # NOTE: list all pushed images for checking
+    gcloud artifacts docker images list \
+           "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"
   #+end_src
-
-
-

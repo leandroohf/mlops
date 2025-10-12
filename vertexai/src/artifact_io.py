@@ -1,21 +1,24 @@
 # handlers.py
 from __future__ import annotations
-from dataclasses import dataclass
+import os
+import tempfile
 import json
 from pathlib import Path
-import shutil
-from typing import Any, Dict, Optional, Union, Literal
-from google.cloud import storage
-
-import os
-import io
-from loguru import logger
-import pandas as pd
-import pickle   
+import pandas as pd 
 import joblib
 
+import shutil
+from typing import Any, Dict, Optional, Union, Literal
+
+from google.cloud import storage
+
+
+from loguru import logger
+
+
 SUPPORTED_FORMATS = Literal["json","txt" ,"parquet", "csv", "pickle"]
-BUCKET_NAME = os.getenv("BUCKET_NAME", "bike-artifacts")
+BUCKET_NAME = os.getenv("BUCKET_NAME", "")
+
 
 class LocalArtifactHandler():
 
@@ -79,6 +82,8 @@ class LocalArtifactHandler():
 
         file_type = self._infer_fmt_from_name(fname)
 
+        print(f"Loading {file_type} from {fname}")
+
         if file_type == 'csv':
 
             return pd.read_csv(fname)
@@ -131,10 +136,12 @@ class GCSArtifactHandler(LocalArtifactHandler):
         bucket_name: str = BUCKET_NAME,
         root_path: str = 'dev'):
 
-        assert bucket_name.startswith("gs://"), f"Invalid GCS bucket name: {bucket_name}"
+        assert not bucket_name.startswith("gs://"), f"Invalid GCS bucket name: {bucket_name}"
 
         self._bucket_name = bucket_name
         self._root_path = root_path
+
+        print(f"GCSArtifactHandler: bucket={self._bucket_name}, root_path={self._root_path}")
 
         try:
             self.storage_client = storage.Client()

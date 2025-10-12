@@ -2,7 +2,6 @@ import os
 import numpy as np
 import pandas as pd
 
-
 class Preprocessor():
 
     def __init__(self, n_rows: int = 1000):

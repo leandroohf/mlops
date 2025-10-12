@@ -1,139 +1,49 @@
-import os
-import sys
 from kfp import dsl
 from kfp.dsl import component, Input, Output, Dataset, Model, Metrics
-
-
-from kfp import local
 from kfp.dsl import Metrics
 
 from dotenv import dotenv_values
-from sklearn.model_selection import train_test_split
-
-from src.artifact_io import LocalArtifactHandler
-from src.preprocessing import Preprocessor
-from src.training import ModelTrainer
+from src.utils import get_env_from_yaml
 
 config = dotenv_values(".env")
-IMAGE_URI = config.get("IMAGE_URI") # ex: "us-central1-docker.pkg.dev/your-project/ml-images/parallel-models:v1"
+IMAGE_URI = config.get("IMAGE_URI")     # ex: "us-central1-docker.pkg.dev/your-project/ml-images/parallel-models:v1"
+BUCKET_NAME = config.get("BUCKET_NAME") # bucket for staging
+BUCKET_URI = config.get("BUCKET_URI")   # gs://bucket for staging
 
-def preprocess(output_dir: str, n_rows: int = 1000):
+ENV = get_env_from_yaml("latest.yaml")
 
-    handler = LocalArtifactHandler()
+IMAGE = f"{IMAGE_URI}:{ENV}"
 
-    preprocessor = Preprocessor(n_rows=n_rows)
-    preprocessed_data = preprocessor.fit_transform(raw_data=None)
-
-    parquet_path = os.path.join(output_dir, "preprocessed.parquet")
-    print(f"Writing Parquet to {parquet_path}")
-    handler.save(preprocessed_data, parquet_path)
-
-    csv_path = "preprocessed/preprocessed.csv"
-    print(f"Writing CSV for debug to {csv_path}")
-    handler.save(preprocessed_data, csv_path)
-
-    return preprocessed_data
-
-
-def train_model(dataset_dir: str, model_dir: str, model_name: str) -> float:
-
-    handler = LocalArtifactHandler()
-    parquet_path = os.path.join(dataset_dir, "preprocessed.parquet")
-    preprocessed_data = handler.load(parquet_path)
-
-    X = preprocessed_data[["feature_a", "feature_b", "feature_c"]]
-    y = preprocessed_data["target"]
-
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2)
-
-    model = ModelTrainer(model_name=model_name)
-    r2 = model.fit(X_train, y_train)
-
-    model_path = os.path.join(model_dir, f"{model_name}.joblib")
-    print(f"Saving model to {model_path}")
-    handler.save(model, model_path)
-
-    return r2
-
-
+print(f"Using environment: {ENV}")
+print(f"Using image: {IMAGE_URI}")
+print(f"Using image with tag: {IMAGE}")
+print(f"Using bucket: {BUCKET_NAME}")
+print(f"Using bucket URI: {BUCKET_URI}")
 
 @component(base_image=IMAGE_URI)
-def preprocess(output_dataset: Output[Dataset], n_rows: int = 1000) -> Dataset:
+def preprocess(preprocessed_dataset: Output[Dataset], n_rows: int = 1000) -> Dataset:
 
-    from src.preprocessing import Preprocessor
-    from src.artifact_io import LocalArtifactHandler
+    from src.executor import run_preprocess
     import sys
-    import os
     # NOTE: KFP gives you a directory at output_dataset.path
 
     print(f"[preprocess] n_rows: {n_rows}")
     print(f"[preprocess] sys.path: {sys.path}")
 
     # ... write preprocessed.csv / preprocessed.pkl under output_dataset.path ...
-    print("[debug] local path:", output_dataset.path)   # container path
+    print("[debug] local path:", preprocessed_dataset.path)   # container path
     # In Vertex runs, .uri is the GCS artifact destination:
-    print("[debug] cloud uri:", output_dataset.uri)
-    output_dataset.metadata["files"] = ["preprocessed.csv", "preprocessed.pkl"]
-    output_dataset.name = "preprocessed_data"
+    print("[debug] cloud uri:", preprocessed_dataset.uri)
+    preprocessed_dataset.metadata["files"] = ["preprocessed.csv", "preprocessed.pkl"]
+    preprocessed_dataset.metadata["label"] = "preprocessed_data" 
 
-    preprocessor = Preprocessor(n_rows=n_rows)
-    preprocessed_data = preprocessor.fit_transform(raw_data=None)
+    preprocessed_data = run_preprocess(output_dir=preprocessed_dataset.path, n_rows=n_rows)
 
-    handler = LocalArtifactHandler()
-    parquet_path = os.path.join(output_dataset.path, "preprocessed.parquet")
-    print(f"Writing Parquet to {parquet_path}")
-    handler.save(preprocessed_data, parquet_path)
-
-    # preprocessed_data = preprocess_main(output_dir=output_dataset.path, n_rows=n_rows)
-
-    output_dataset.metadata["size"] = preprocessed_data.shape
-    print(f"[preprocess] done -> {output_dataset.path} with shape={preprocessed_data.shape}")
-
-    return output_dataset
-
-@component(base_image=IMAGE_URI)
-def train_from_uri(
-    dataset_uri: str,
-    model: Output[Model],
-    metrics: Output[Metrics],
-    model_name: str = "model1",
-    ):
-
-    import os
-    from sklearn.model_selection import train_test_split
-    from src.training import ModelTrainer
-    from src.artifact_io import LocalArtifactHandler
-    
-    print(f"[train] dataset URI: {dataset_uri}")
-
-    handler = LocalArtifactHandler()
-    preprocessed_data = handler.load(dataset_uri)
-
-    X = preprocessed_data[["feature_a", "feature_b", "feature_c"]]
-    y = preprocessed_data["target"]
-
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2)
-
-    model_lgr = ModelTrainer(model_name=model_name)
-    r2 = model_lgr.fit(X_train, y_train)
-
-    pickle_path = os.path.join(model.path, f"{model_name}.joblib")
-    handler.save(model_lgr, pickle_path)
-
-    model.metadata["version"] = "1.0"
-    model.framework = "sklearn"
-    model.metadata["r2"] = r2
-
-    metrics.log_metric("r2", r2)
-
-    print(f"[train] model saved at: {model.path}")
-    print(f"[train] model URI: {model.uri}")
-    print(f"[train] model metadata: {model.metadata}")
-
-    print(f"[train] metrics URI: {metrics.uri}")
-    print(f"[train] metrics saved at: {metrics.path} with r2={r2:.3f}")
-    print(f"[train] metrics metadata: {metrics.metadata}")
-
+    preprocessed_dataset.metadata["size"] = preprocessed_data.shape
+    print(f"[preprocess] done -> {preprocessed_dataset.path} with shape={preprocessed_data.shape}")
+    print(f"[preprocess] dataset name: {preprocessed_dataset.name}")
+    print(f"[preprocess] dataset uri: {preprocessed_dataset.uri}")
+    print(f"[preprocess] dataset metadata: {preprocessed_dataset.metadata}")
 
 
 @component(base_image=IMAGE_URI)
@@ -141,36 +51,22 @@ def train(
     preprocessed_dataset: Input[Dataset],
     model: Output[Model],
     metrics: Output[Metrics],
-    model_name: str = "model1",
+    model_name: str = "m1",
     ):
 
-    import os
-    from sklearn.model_selection import train_test_split
-    from src.training import ModelTrainer
-    from src.artifact_io import LocalArtifactHandler
+    from src.executor import train_model
     
     print(f"[train] dataset URI: {preprocessed_dataset.uri}")
 
-    handler = LocalArtifactHandler()
-    preprocessed_data = handler.load(preprocessed_dataset.uri)
-
-    X = preprocessed_data[["feature_a", "feature_b", "feature_c"]]
-    y = preprocessed_data["target"]
-
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2)
-
-    model_lgr = ModelTrainer(model_name=model_name)
-    r2 = model_lgr.fit(X_train, y_train)
-
-    pickle_path = os.path.join(model.path, f"{model_name}.joblib")
-    handler.save(model_lgr, pickle_path)
+    r2 = train_model(dataset_dir=preprocessed_dataset.uri, model_dir=model.path, model_name=model_name)
+    print(f"[train] {model_name}: r2={r2:.3f}")
 
     model.metadata["version"] = "1.0"
     model.framework = "sklearn"
     model.metadata["r2"] = r2
+    model.metadata["label"] = model_name
 
-    metrics.log_metric("r2", r2)
-
+    print(f"[train] model name: {model.name}")
     print(f"[train] model saved at: {model.path}")
     print(f"[train] model URI: {model.uri}")
     print(f"[train] model metadata: {model.metadata}")
@@ -179,98 +75,97 @@ def train(
     print(f"[train] metrics saved at: {metrics.path} with r2={r2:.3f}")
     print(f"[train] metrics metadata: {metrics.metadata}")
 
+    metrics.log_metric(f"{model_name}_r2", r2)
+
 
 @component(
     base_image=IMAGE_URI,
 )
-def validate_and_publish_from_uris(
-    model1_uri: str,
-    model2_uri: str,
-    best_model: Output[Model],
-) -> None:
+def publish_best_model(
+    preprocessed_dataset: Input[Dataset],
+    model1: Input[Model],
+    model2: Input[Model]):
 
+    from src.artifact_io import LocalArtifactHandler, GCSArtifactHandler
+    from src.executor import validate_model, get_target_and_features
+    from sklearn.model_selection import train_test_split
+    import os
+    import subprocess, shlex   
 
-    from src.training import ModelTrainer
-    from src.artifact_io import LocalArtifactHandler
+    # NOTE: VertexAI mount the vertexai bucket at /gcs/
+    # This is what allows to save on disk and have it in GCS
+    # VertexAI does not allow ls /gcs/ folder
+    print("debug: VertexAI mount the vertexai bucket at /gcs/")
+    for p in [preprocessed_dataset.path, model1.path, model2.path]:
+        print(f"\n--- du for {p} ---")
+        print(subprocess.check_output(["bash","-lc", f"du -sh {shlex.quote(p)} || true"], text=True))
+        print(subprocess.check_output(["bash","-lc", f"du -sh {shlex.quote(p)}/* 2>/dev/null || true"], text=True))
 
-    print(f"[validation] model1 URI: {model1_uri}")
-    print(f"[validation] model2 URI: {model2_uri}")
+    print(f"[validate] dataset URI: {preprocessed_dataset.path}")
 
     handler = LocalArtifactHandler()
+   
+    parquet_path = os.path.join(preprocessed_dataset.path, "preprocessed.parquet")
+    print(f"[validate] loading preprocessed data from {parquet_path}")
+    preprocessed_data = handler.load(parquet_path)
 
-    model1 = handler.load(model1_uri)
-    model2 = handler.load(model2_uri)
+    X, y = get_target_and_features(preprocessed_data)
 
+    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2)
 
+    print(f"[validate] model1 URI: {model1.uri}")
+    print(f"[validate] model1 PATH: {model1.path}")
+    print(f"[validate] model1 METADATA: {model1.metadata}")
+    model_path1 = os.path.join(model1.path, model1.metadata.get("label") + ".joblib")
+    print(f"[validate] loading model1 from {model_path1}")
+    m1_reg = handler.load(model_path1)
 
+    model_path2 = os.path.join(model2.path, model2.metadata.get("label") + ".joblib")
+    print(f"[validate] loading model2 from {model_path2}")
+    m2_reg = handler.load(model_path2)
 
-    # validate_main(
-    #     model1_path=model1_uri,
-    #     model2_path=model2_uri,
-    #     out_model_dir=best_model.path,
-    # )
+    r2_model1 = validate_model(X_test,y_test, m1_reg)
+    r2_model2 = validate_model(X_test,y_test, m2_reg)
 
+    winner_model = model1 if r2_model1 >= r2_model2 else model2
+    best_model = m1_reg if r2_model1 >= r2_model2 else m2_reg
+    print(f"[validate] winner: {winner_model.metadata.get('label')} with r2={max(r2_model1, r2_model2):.3f}")
 
-# @dsl.pipeline(name="vertexai-pipeline-with-parrallel-components")
-# def pipeline(n_rows: int = 1000):
+    bucket_name = os.environ.get("BUCKET_NAME")
+    print(f"[validate] publishing to bucket: {bucket_name}")
 
-#     prep = preprocess(n_rows=n_rows)
-
-#     # NOTE: parallel fan-out (two independent tasks)
-#     m1 = train(dataset=prep.outputs["output_dataset"], model_name="model1")
-#     m2 = train(dataset=prep.outputs["output_dataset"], model_name="model2")
-
-#     # NOTE: converge; DO NOT pass outputs into Output params (they are auto-created)
-#     vp = validate_and_publish(
-#         model1=m1.outputs["model"], metrics1=m1.outputs["metrics"],
-#         model2=m2.outputs["model"], metrics2=m2.outputs["metrics"],
-#     )
-
-# @dsl.pipeline(name="local-pipe")
-# def local_pipeline(n_rows: int = 500):
-
-#     preprocessed_dataset = preprocess(n_rows=n_rows)
-
-#     print(f"Preprocessed data name: {preprocessed_dataset.outputs['output_dataset'].name}")
-#     print(f"Preprocessed data at: {preprocessed_dataset.outputs['output_dataset'].path}")
-#     print(f"Preprocessed data URI: {preprocessed_dataset.outputs['output_dataset'].uri}")
-#     print(f"Preprocessed data metadata: {preprocessed_dataset.outputs['output_dataset'].metadata}")
-
-    # m1 = train(dataset=preprocessed_dataset.outputs["output_dataset"], model_name="model1")
-    # m2 = train(dataset=preprocessed_dataset.outputs["output_dataset"], model_name="model2")
-
-    # print("Model 1 R2:", m1.outputs["metrics"])
-    # print("Model 2 R2:", m2.outputs["metrics"])
-
-# NOTE: smoke test
-def run_local():
-
-    local.init(runner=local.DockerRunner())
-    preprocess_task = preprocess(n_rows=500)
-    preprocessed_dataset = preprocess_task.outputs["output_dataset"]
-
-    print(f"Preprocessed data name: {preprocessed_dataset.name}")
-    print(f"Preprocessed data at: {preprocessed_dataset.path}")
-    print(f"Preprocessed data URI: {preprocessed_dataset.uri}")
-    print(f"Preprocessed data metadata: {preprocessed_dataset.metadata}")
-
-    m1  = train(preprocessed_dataset=preprocessed_dataset, model_name="model1")
-    m2  = train(preprocessed_dataset=preprocessed_dataset, model_name="model2")
-
-    model = m1.outputs["model"]
-    metrics = m1.outputs["metrics"]
-
-    print(f"Trained model at: {model.path}")
-    print(f"Trained model URI: {model.uri}")
-    print(f"Model metadata: {model.metadata}")
+    # NOTE: publish to GCS bucket
+    publisher = GCSArtifactHandler(
+        bucket_name=bucket_name,
+        root_path="vertexai/prod/models")
     
-    print(f"Metrics at: {metrics.path}")
-    print(f"Metrics URI: {metrics.uri}")
-    print(f"Metrics metadata: {metrics.metadata}")
+    publish_path = "best.joblib"
+    publisher.save(best_model, publish_path)
 
+@dsl.pipeline(
+            name="vertexai-demo-pipeline",
+            description="Preprocess -> Train x2 -> Publish best"
+              )
+def pipeline(n_rows: int = 1000, model1_name: str = "model1", model2_name: str = "model2"):
 
-if __name__ == "__main__":
+    pre = preprocess(n_rows=n_rows)
+    pre.set_cpu_limit("4")
+    pre.set_memory_limit("16G")
 
-    print("Running local smoke test...")
-    run_local()
-    print("Done.")
+    m1 = train(preprocessed_dataset=pre.outputs["preprocessed_dataset"], model_name=model1_name)
+    m1.set_cpu_limit("4")
+    m1.set_memory_limit("16G")
+
+    m2 = train(preprocessed_dataset=pre.outputs["preprocessed_dataset"], model_name=model2_name)
+    m2.set_cpu_limit("4")
+    m2.set_memory_limit("16G")
+
+    p = publish_best_model(
+        preprocessed_dataset=pre.outputs["preprocessed_dataset"],
+        model1=m1.outputs["model"], 
+        model2=m2.outputs["model"],
+    )
+    p.set_cpu_limit("4")
+    p.set_memory_limit("16G")
+    p.set_env_variable("BUCKET_NAME", BUCKET_NAME) # NOTE: setting env var inside an componet
+    p.set_env_variable("env", ENV) # NOTE: setting env var inside an componet
