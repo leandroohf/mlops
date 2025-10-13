@@ -6,6 +6,8 @@ from dotenv import dotenv_values
 from src.utils import get_env_from_yaml
 
 config = dotenv_values(".env")
+PROJECT_ID = config.get("PROJECT_ID") # ex: "your-project"
+REGION = config.get("REGION", "us-central1") # ex: "us-central1"
 IMAGE_URI = config.get("IMAGE_URI")     # ex: "us-central1-docker.pkg.dev/your-project/ml-images/parallel-models:v1"
 BUCKET_NAME = config.get("BUCKET_NAME") # bucket for staging
 BUCKET_URI = config.get("BUCKET_URI")   # gs://bucket for staging
@@ -94,7 +96,9 @@ def publish_best_model(
     from src.executor import validate_model, get_target_and_features
     from sklearn.model_selection import train_test_split
     import os
-    import subprocess, shlex   
+    import json
+    import subprocess, shlex
+    from google.cloud import aiplatform   
 
     # NOTE: VertexAI mount the vertexai bucket at /gcs/
     # This is what allows to save on disk and have it in GCS
@@ -144,14 +148,37 @@ def publish_best_model(
         bucket_name=bucket_name,
         root_path=f"vertexai/{env}")
     
-    publish_path = "models/best.joblib"
+    # NOTE: vertexai expect the final model to be at models/model.joblib
+    publish_path = "models/model.joblib"
     publisher.save(best_model, publish_path)
 
-    stable_gcs_path = os.path.join(publisher._root_path, publish_path)
-    print(f"[publish] best model published at: {stable_gcs_path}")
-    with open(published_uri_out, "w") as f:
-        f.write(stable_gcs_path)
 
+    print(f"[publish] winner_model name: {winner_model.name}")
+    print(f"[publish] winner_model uri: {winner_model.uri}")
+    print(f"[publish] winner_model path: {winner_model.path}")
+    print(f"[publish] winner_model metadata: {winner_model.metadata}")
+
+    # NOTE: publish on model registry
+    project_id = os.environ.get("PROJECT_ID")
+    region = os.environ.get("REGION", "us-central1")
+    aiplatform.init(project=project_id, location=region)
+
+
+    model = aiplatform.Model.upload(
+            display_name=env,
+            artifact_uri=winner_model.uri,                # must be a directory
+            serving_container_image_uri=os.getenv("IMAGE_URI", ""),
+        )
+
+    stable_gcs_path = os.path.join(publisher._root_path, publish_path)
+    model_resource_name = model.resource_name
+
+    output_resources ={'gcs_path': stable_gcs_path, 'model_resource_name': model_resource_name}
+   
+    print(f"[publish] best model published at: {stable_gcs_path}")
+    print(f"[publish] model resource name: {model_resource_name}")
+    with open(published_uri_out, "w") as f:
+        f.write(json.dumps(output_resources))
 
 @dsl.pipeline(
             name="vertexai-demo-pipeline",
@@ -178,7 +205,14 @@ def pipeline(n_rows: int = 1000, model1_name: str = "model1", model2_name: str =
         model1=m1.outputs["model"], 
         model2=m2.outputs["model"],
     )
+
+    # NOTE: setting resources limits for the component
     p.set_cpu_limit("4")
     p.set_memory_limit("16G")
-    p.set_env_variable("BUCKET_NAME", BUCKET_NAME) # NOTE: setting env var inside an componet
-    p.set_env_variable("env", ENV) # NOTE: setting env var inside an componet
+
+    # NOTE: setting env var inside an componet
+    p.set_env_variable("BUCKET_NAME", BUCKET_NAME) 
+    p.set_env_variable("env", ENV) 
+    p.set_env_variable("PROJECT_ID", PROJECT_ID) 
+    p.set_env_variable("REGION", REGION)
+    p.set_env_variable("IMAGE_URI", IMAGE_URI)
