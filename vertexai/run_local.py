@@ -20,7 +20,8 @@ def publish_local(source_model_path: str, destination_model_dir: str) -> None:
     assert os.path.exists(source_model_path), f"Source model path does not exist: {source_model_path}"
     assert os.path.isdir(destination_model_dir) or not os.path.exists(destination_model_dir), f"Destination model directory is not a directory: {destination_model_dir}"
 
-    destination_model_path = os.path.join(destination_model_dir, "best.joblib")
+    # NOTE: vertexai model resitry expect that the model file is named 'model.joblib'
+    destination_model_path = os.path.join(destination_model_dir, "model.joblib")
     print(f"[validate_and_publish] Best model saved at: '{destination_model_path}'")
     shutil.copy(source_model_path, destination_model_path)
     print(f"[validate_and_publish] Best model saved at: '{destination_model_path}'")
