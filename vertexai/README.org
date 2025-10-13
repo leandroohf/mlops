@@ -5,7 +5,10 @@
 
   1. preprocessing: generates fake data
   2. training: trains 2 models in parallel
-  3. publishing: upload best model to model artifacts registry
+  3. publishing: upload best model to model artifacts
+
+  <img src="images/pipeline.png" width="800" height="400" alt="Pipeline diagram">
+
 
 * Set infracstructure
 
