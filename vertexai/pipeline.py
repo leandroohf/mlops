@@ -142,9 +142,9 @@ def publish_best_model(
     # NOTE: publish to GCS bucket
     publisher = GCSArtifactHandler(
         bucket_name=bucket_name,
-        root_path=f"vertexai/{env}/models")
+        root_path=f"vertexai/{env}")
     
-    publish_path = "best.joblib"
+    publish_path = "models/best.joblib"
     publisher.save(best_model, publish_path)
 
     stable_gcs_path = os.path.join(publisher._root_path, publish_path)

@@ -66,10 +66,19 @@
 
 * How to run (runbook)
 
-   #+begin_src sh
-     # NOTE: run local
-     python run_local.py
+   * Train
+     #+begin_src sh
+       # NOTE: run local
+       python run_local.py
 
-     # NOTE: run vertexai
-     python run_vertexai.py
-   #+end_src
+       # NOTE: run vertexai
+       python run_vertexai.py
+     #+end_src
+
+   * predictions
+
+     #+begin_src sh
+       export BUCKET_NAME=mlops-project-id-project-bucket
+       python run_batch_predictor.py
+     #+end_src
+
