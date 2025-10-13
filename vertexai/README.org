@@ -10,9 +10,9 @@
 * Set infracstructure
 
   #+begin_src sh
-    PROJECT_ID="mlops-project-abacabb"
+    PROJECT_ID="mlops-project-id"
     REGION="us-central1" # e.g., us-central1, us-east1, europe-west4
-    BUCKET="gs://${PROJECT_ID}-bike-share-project-bucket"
+    BUCKET="gs://${PROJECT_ID}-project-bucket"
 
     # NOTE: enable VerexAI service
     gcloud services enable aiplatform.googleapis.com
@@ -41,7 +41,7 @@
 
     # NOTE: build and push image
     # this can be ran by circleci pipelines (not the scope on this project)
-    export TAG="vrtx1"
+    export TAG="v1"
     export IMAGE="vertexai-pipe-image"
     export IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$TAG"
 

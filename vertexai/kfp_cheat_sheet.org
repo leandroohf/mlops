@@ -1,6 +1,8 @@
 
 * TL;DR
 
+   * kfp strength is you can write pipelines in python code and run multiple ml
+     platforms
    * Artifacts are **not passed in memory**; they’re files under .path.
    * **WRITE to .path; KFP/Vertex takes care of syncing to .uri and back for the
      next step**.
@@ -246,52 +248,4 @@
         if aliases:
             model.add_version_aliases(aliases)
   #+end_src
-
-* Run local with Docker
-
-   #+begin_src sh
-     # NOTE: .env
-     # IMAGE_URI=vertexai-image:v1
-
-     # NOTE: build image locally
-     docker build -t vertexai-image:v1 .
-
-     # NOTE: run local
-     python pipeline.py
-     16:49:34.270 - INFO - Executing task 'preprocess'
-     16:49:34.270 - INFO - Streamed logs:
-
-         Found image 'vertexai-image:v1'
-
-         WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
-         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Looking for component `preprocess` in --component_module_path `/tmp/tmp.rKEV9vXbDC/ephemeral_component.py`
-         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Loading KFP component "preprocess" from /tmp/tmp.rKEV9vXbDC/ephemeral_component.py (directory "/tmp/tmp.rKEV9vXbDC" and module name "ephemeral_component")
-         [KFP Executor 2025-10-08 23:49:35,205 INFO]: Got executor_input:
-         [preprocess] n_rows: 500
-         [preprocess] sys.path: ['/tmp/tmp.rKEV9vXbDC', '/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
-         [debug] local path: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
-         [debug] cloud uri: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
-         Writing Parquet to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/preprocessed.parquet
-         Writing CSV for debug to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/preprocessed.csv
-         [preprocess] done -> /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset with shape=(500, 4)
-         [KFP Executor 2025-10-08 23:49:35,432 INFO]: Wrote executor output file to /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/executor_output.json.
-
-     16:49:35.526 - INFO - Task 'preprocess' finished with status SUCCESS
-     16:49:35.526 - INFO - Task 'preprocess' outputs:
-         output_dataset: Dataset( name='preprocessed_data',
-                                  uri='/Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset',
-                                  metadata={'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]} )
-         Output: Dataset( name='preprocessed_data',
-                          uri='/Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset',
-                          metadata={'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]} )
-     ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-     Preprocessed data name: preprocessed_data
-     Preprocessed data at: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
-     Preprocessed data URI: /Users/leandro.fernandes/leandro/mlops/vertexai/local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset
-     Preprocessed data metadata: {'files': ['preprocessed.csv', 'preprocessed.pkl'], 'size': [500.0, 4.0]}
-
-     # NOTE: inspecting artifacts stored locally (managed by kfp)
-     ls local_outputs/preprocess-2025-10-08-16-49-34-270544/preprocess/output_dataset/
-     preprocessed.csv     preprocessed.parquet
-   #+end_src
 
