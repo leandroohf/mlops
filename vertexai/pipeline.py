@@ -1,5 +1,5 @@
 from kfp import dsl
-from kfp.dsl import component, Input, Output, Dataset, Model, Metrics
+from kfp.dsl import component, Input, Output, Dataset, Model, Metrics, OutputPath
 from kfp.dsl import Metrics
 
 from dotenv import dotenv_values
@@ -54,6 +54,7 @@ def train(
     model_name: str = "m1",
     ):
 
+    import os
     from src.executor import train_model
     
     print(f"[train] dataset URI: {preprocessed_dataset.uri}")
@@ -65,6 +66,7 @@ def train(
     model.framework = "sklearn"
     model.metadata["r2"] = r2
     model.metadata["label"] = model_name
+    model.metadata["env"] = os.environ.get("env", "dev")
 
     print(f"[train] model name: {model.name}")
     print(f"[train] model saved at: {model.path}")
@@ -84,7 +86,9 @@ def train(
 def publish_best_model(
     preprocessed_dataset: Input[Dataset],
     model1: Input[Model],
-    model2: Input[Model]):
+    model2: Input[Model],
+    published_uri_out: OutputPath(str),
+    ):
 
     from src.artifact_io import LocalArtifactHandler, GCSArtifactHandler
     from src.executor import validate_model, get_target_and_features
@@ -101,27 +105,27 @@ def publish_best_model(
         print(subprocess.check_output(["bash","-lc", f"du -sh {shlex.quote(p)} || true"], text=True))
         print(subprocess.check_output(["bash","-lc", f"du -sh {shlex.quote(p)}/* 2>/dev/null || true"], text=True))
 
-    print(f"[validate] dataset URI: {preprocessed_dataset.path}")
+    print(f"[publish] dataset URI: {preprocessed_dataset.path}")
 
     handler = LocalArtifactHandler()
    
     parquet_path = os.path.join(preprocessed_dataset.path, "preprocessed.parquet")
-    print(f"[validate] loading preprocessed data from {parquet_path}")
+    print(f"[publish] loading preprocessed data from {parquet_path}")
     preprocessed_data = handler.load(parquet_path)
 
     X, y = get_target_and_features(preprocessed_data)
 
     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2)
 
-    print(f"[validate] model1 URI: {model1.uri}")
-    print(f"[validate] model1 PATH: {model1.path}")
-    print(f"[validate] model1 METADATA: {model1.metadata}")
+    print(f"[publish] model1 URI: {model1.uri}")
+    print(f"[publish] model1 PATH: {model1.path}")
+    print(f"[publish] model1 METADATA: {model1.metadata}")
     model_path1 = os.path.join(model1.path, model1.metadata.get("label") + ".joblib")
-    print(f"[validate] loading model1 from {model_path1}")
+    print(f"[publish] loading model1 from {model_path1}")
     m1_reg = handler.load(model_path1)
 
     model_path2 = os.path.join(model2.path, model2.metadata.get("label") + ".joblib")
-    print(f"[validate] loading model2 from {model_path2}")
+    print(f"[publish] loading model2 from {model_path2}")
     m2_reg = handler.load(model_path2)
 
     r2_model1 = validate_model(X_test,y_test, m1_reg)
@@ -129,11 +133,11 @@ def publish_best_model(
 
     winner_model = model1 if r2_model1 >= r2_model2 else model2
     best_model = m1_reg if r2_model1 >= r2_model2 else m2_reg
-    print(f"[validate] winner: {winner_model.metadata.get('label')} with r2={max(r2_model1, r2_model2):.3f}")
+    print(f"[publish] winner: {winner_model.metadata.get('label')} with r2={max(r2_model1, r2_model2):.3f}")
 
     bucket_name = os.environ.get("BUCKET_NAME")
     env = os.environ.get("env", "dev")
-    print(f"[validate] publishing to bucket: {bucket_name}; env: {env}")
+    print(f"[publish] publishing to bucket: {bucket_name}; env: {env}")
 
     # NOTE: publish to GCS bucket
     publisher = GCSArtifactHandler(
@@ -142,6 +146,12 @@ def publish_best_model(
     
     publish_path = "best.joblib"
     publisher.save(best_model, publish_path)
+
+    stable_gcs_path = os.path.join(publisher._root_path, publish_path)
+    print(f"[publish] best model published at: {stable_gcs_path}")
+    with open(published_uri_out, "w") as f:
+        f.write(stable_gcs_path)
+
 
 @dsl.pipeline(
             name="vertexai-demo-pipeline",

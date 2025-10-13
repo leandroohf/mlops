@@ -2,14 +2,71 @@
 * TL;DR
 
    * Artifacts are **not passed in memory**; they’re files under .path.
-   * Write to .path; **KFP/Vertex takes care of syncing to .uri and back for the
+   * **WRITE to .path; KFP/Vertex takes care of syncing to .uri and back for the
      next step**.
    * You only need to manage a “shared location” if you decide to skip artifacts
      and do your own storage.
    * You can pass small data (basic types) between components by using
      **metadata** attributes
 
-* KFP Dataset
+* KFP data types and KFP Inputs/Outputs
+
+   * Parameters vs Artifacts
+
+         #+begin_src python
+          # NOTE:
+          # parameters: rows, prefix and debug are parameters
+          # artifacts: out_ds
+
+          @component(base_image="python:3.11")
+          def make_table(rows: int = 100, prefix: str = "row", debug: bool = False,
+                         out_ds: Output[Dataset] = None):
+              pass
+        #+end_src
+
+
+     * Parameters: plain values (str/int/float/bool). Passed by value. Tiny,
+       immutable JSON-y things.
+
+     * Artifacts: files/directories (e.g., Dataset, Model, Metrics). Passed by
+       reference (a path/URI). Big stuff.
+
+       * Input[ArtifactType] = read-only handle to something produced earlier.
+         You should NEVER write to input_artifact.path.
+
+       * Output[ArtifactType] = write handle you must populate.
+         * Usually you need to create the directors
+
+             #+begin_src python
+               os.makedirs(output_ds.path, exist_ok=True)
+             #+end_src
+
+       * Rule of thumb: NEVER mutate an Input[...] in place. If you need a
+         modified version, write a new Output[...].
+
+     * pipeline DAG (kfp defines the pipeline regardless the ml platform: VertexAI, aws,)
+
+       * This defines sequential and parallel tasks. If 2 tasks are not
+         dependent thte defaults aciotn is run in parallel. For running
+         sequential you need `task2.after(task1)`.
+
+       * Outputs are defined in the pipeline code and the component that has the
+         Output as arg.
+
+         #+begin_src python
+           @dsl.pipeline(
+                       name="vertexai-demo-pipeline",
+                       description="Preprocess -> Train x2 -> Publish best"
+                         )
+           def pipeline(n_rows: int = 1000, model1_name: str = "model1", model2_name: str = "model2"):
+               pass
+         #+end_src
+
+
+
+
+
+** Dataset
 
    Datasets are a way to pass data between components in a pipeline. They are
    essentially pointers to data stored in a remote location, such as Google
@@ -23,7 +80,9 @@
     * metadata (dict): Additional metadata about the dataset.
     * name (str): The name of the dataset. Ex: preprocessed_data
 
-* Metrics
+** Metrics
+
+      TODO: need to test the code
 
      * For scalar metrics, use the Metrics artifact’s helpers: Gain for free nice UI
        #+begin_src python
@@ -143,6 +202,7 @@
          * PNG Artifact → easy to pass between steps; add a tiny
            Markdown/metadata step if you also want it visualized.
 
+** Models
 * Model registry (VertexAI Model registry)
 
   * It is only for Model (double checking)

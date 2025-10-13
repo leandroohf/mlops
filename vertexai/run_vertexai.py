@@ -16,7 +16,7 @@ BUCKET = config.get("BUCKET_URI") # gs://bucket for staging
 class VertexAiRunner:
     def __init__(self, env: str = None):
 
-        self.env = env or get_env_from_yaml("latest.yaml")
+        self.env = env if env else get_env_from_yaml("latest.yaml")
         print(f"Using env: {self.env}")
 
     def build(self):

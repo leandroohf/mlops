@@ -1,15 +1,30 @@
 #!/usr/bin/env python
 
 import os
+import shutil
 import sys
 from pathlib import Path
 import json
 import os
 import joblib
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 from src.executor import train_model, run_preprocess
+
+def publish_local(source_model_path: str, destination_model_dir: str) -> None:
+    
+    print(f"[validate_and_publish] Selected model path: '{source_model_path}'")
+    print(f"[validate_and_publish] Destination (best_model) dir: '{destination_model_dir}'")
+
+    assert source_model_path != destination_model_dir, f"Source ({source_model_path}) and destination ({destination_model_dir}) directories must be different"
+    assert os.path.exists(source_model_path), f"Source model path does not exist: {source_model_path}"
+    assert os.path.isdir(destination_model_dir) or not os.path.exists(destination_model_dir), f"Destination model directory is not a directory: {destination_model_dir}"
+
+    destination_model_path = os.path.join(destination_model_dir, "best.joblib")
+    print(f"[validate_and_publish] Best model saved at: '{destination_model_path}'")
+    shutil.copy(source_model_path, destination_model_path)
+    print(f"[validate_and_publish] Best model saved at: '{destination_model_path}'")
+
 
 def main():
 
@@ -28,32 +43,21 @@ def main():
     print(f"[preprocess] done -> {preprocess_dir}")
 
     model_dir = "models/"
-    model_name = "model1"
-    r2_1 = float(train_model(dataset_dir=str(preprocess_dir), model_dir=str(model_dir), model_name=model_name))
-    print(f"[train] {model_name}: r2={r2_1:.3f}")
+    model_name1 = "model1"
+    r2_1 = train_model(dataset_dir=str(preprocess_dir), model_dir=str(model_dir), model_name=model_name1)
+    print(f"[train] {model_name1}: r2={r2_1:.3f}")
 
-    model_name = "model2"
-    r2_2 = float(train_model(dataset_dir=str(preprocess_dir), model_dir=str(model_dir), model_name=model_name))
-    print(f"[train] {model_name}: r2={r2_2:.3f}")
+    model_name2 = "model2"
+    r2_2 = train_model(dataset_dir=str(preprocess_dir), model_dir=str(model_dir), model_name=model_name2)
+    print(f"[train] {model_name2}: r2={r2_2:.3f}")
 
-    # Save metrics to JSON files
-    with open(model_dir + "metrics_model1.json", "w") as f:
-        json.dump({"r2": r2_1}, f)
+    winner_model = model_name1 if r2_1 >= r2_2 else model_name2
+    winner_path = os.path.join(model_dir, f"{winner_model}.joblib")
 
-    with open(model_dir + "metrics_model2.json", "w") as f:
-        json.dump({"r2": r2_2}, f)
-
-    from src.validation import main as validate_main
-    best_model_dir = "models/"
-    model_path1 = model_dir + "model1.joblib"
-    model_path2 = model_dir + "model2.joblib"
+    best_model_dir = model_dir
     Path(best_model_dir).mkdir(parents=True, exist_ok=True)
-    validate_main(
-        model1_path=model_path1, metrics1_path=model_dir + "metrics_model1.json",
-        model2_path=model_path2, metrics2_path=model_dir + "metrics_model2.json",
-        out_model_dir=best_model_dir
-    )
-    print(f"[validate] done -> {best_model_dir}")
+    publish_local(source_model_path=winner_path, destination_model_dir=best_model_dir)
+    
 
 if __name__ == "__main__":
 

@@ -1,11 +1,11 @@
 
 * VertexAI + KubeFlow
 
-Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
+  Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
 
-1. preprocessing: generates fake data
-2. training: trains 2 models in parallel
-3. publishing: upload best model to model artifacts registry
+  1. preprocessing: generates fake data
+  2. training: trains 2 models in parallel
+  3. publishing: upload best model to model artifacts registry
 
 * Set infracstructure
 
@@ -63,3 +63,13 @@ Simple VertexAI + Kubflow pipeline tutorial. It show 3 stages:
     gcloud artifacts docker images list \
            "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO"
   #+end_src
+
+* How to run (runbook)
+
+   #+begin_src sh
+     # NOTE: run local
+     python run_local.py
+
+     # NOTE: run vertexai
+     python run_vertexai.py
+   #+end_src
