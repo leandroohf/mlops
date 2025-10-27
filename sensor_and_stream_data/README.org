@@ -1,0 +1,210 @@
+
+* Project Overview: MVP for Sensor Data Ingestion
+
+    Genetrated with hekp of LLMs.
+
+    This project is a minimal learning prototype (MVP) that simulates inject sparse data from sensors using Google Cloud services.
+    The goal is to:
+
+    1. Simulate sparse sensor data (e.g., bike station pickups and drop-offs).
+    2. Send sensor events to a Google Cloud Pub/Sub topic.
+    3. Use a Cloud Function to consume Pub/Sub messages and write raw events into a BigQuery table.
+
+    This is a first step toward building a full streaming architecture. Later phases may include additional components like a feature
+    computation layer (via Dataflow or other tools), but this MVP focuses on establishing a reliable ingestion pipeline.
+
+* Why Cloud Function?
+
+  + **Latency is not a concern** at this stage, as sensor data is sparse and events do not arrive in high bursts.
+  + Cloud Functions offer a **low-maintenance, serverless option** to bridge Pub/Sub and BigQuery quickly.
+  + This project is intentionally designed as an MVP. Later, we plan to switch to Cloud Dataflow for more scalable and complex processing.
+
+* BigQuery Tables
+
+  Two tables are created for this MVP:
+
+  1. **Raw Events Table** (`raw_events`):
+     Stores the exact sensor events coming from Pub/Sub.
+
+     | event_id | station_id | ts_iso               | kind    | delta |
+     |----------+------------+----------------------+---------+-------|
+     | e-90001  | A_101      | 2025-10-18T16:24:11Z | pickup  |     1 |
+     | e-90002  | A_101      | 2025-10-18T16:24:44Z | dropoff |     1 |
+     | e-90003  | A_205      | 2025-10-18T16:25:02Z | pickup  |     1 |
+
+  2. **Feature Events Table** (`station_features`):
+     Reserved for future use by a feature computation function, not used in this MVP.
+
+* Architecture Diagram (Text Description)
+
+   #+BEGIN_SRC
+   Sensor Simulator --> Pub/Sub Topic --> Cloud Function --> BigQuery (raw_events)
+   #+END_SRC
+
+* Setup infrastructure
+
+  * Env variables
+
+    #+begin_src sh
+      # Environment setup
+      PROJECT_ID="mlops-project-id"
+      REGION="us-central1"
+      SA="service-account@mlops-project-id.iam.gserviceaccount.com"
+      BUCKET="gs://${PROJECT_ID}-bike-share-project-bucket"
+
+      PUBSUB_TOPIC="pubsub-topic"
+      SUBSCRIPTION="consumer-subscription"
+
+      RAW_EVENT_TABLE="${PROJECT_ID}.bike_streaming.raw_events"
+      FEATURE_EVENT_TABLE="${PROJECT_ID}.bike_streaming.station_features"  # NOTE: for future
+    #+end_src
+
+  * Creating table
+
+    #+begin_src sh
+      # NOTE: raw event table
+      # PS: wee need double quotes for bash expansion
+      bq query --use_legacy_sql=false "
+      CREATE TABLE IF NOT EXISTS \`${RAW_EVENT_TABLE}\` (
+        event_id STRING,
+        station_id STRING,
+        ts_iso TIMESTAMP,
+        kind STRING,
+        delta INT64
+      )"
+
+      # NOTE: wide feature table
+      bq query --use_legacy_sql=false "
+      CREATE TABLE IF NOT EXISTS \`${FEATURE_EVENT_TABLE}\` (
+        station_id STRING,
+        feature_name STRING,
+        window_len STRING,
+        value FLOAT64,
+        as_of TIMESTAMP
+      )"
+
+      # NOTE: checking datasets tables were created
+      # list all datasets
+      bq ls --project_id=$PROJECT_ID
+
+      # list all tables in datasets
+      bq ls $PRJECT_ID:bike_streaming
+      tableId        Type    Labels   Time Partitioning   Clustered Fields
+      ------------------ ------- -------- ------------------- ------------------
+      raw_events         TABLE
+      station_features   TABLE
+
+      # delete table
+      bq rm -f -t $PRJECT_ID:bike_streaming.events
+
+    #+end_src
+
+  * Create the pubusub and the topic
+
+    #+begin_src sh
+      # NOTE: enabling
+      gcloud services enable pubsub.googleapis.com --project=$PROJECT_ID
+
+      # NOTE: creating the topic
+      gcloud pubsub topics create $PUBSUB --project="$PROJECT_ID"
+
+      # NOTE: guaranteing publish permission to SA. Assuming SERVICE ACCOUNT is already created before
+      gcloud pubsub topics add-iam-policy-binding $PUBSUB \
+             --member="serviceAccount:$SA" \
+             --role="roles/pubsub.publisher" \
+             --project="$PROJECT_ID"
+
+
+      # NOTE: subscribe SA to topic PUBSUB (he can publish to the right topic)
+      # subscription is for consumers
+      gcloud pubsub subscriptions create $SUBSCRIPTION \
+             --topic=$PUBSUB \
+             --project="$PROJECT_ID"
+
+
+      # NOTE: how to run and test up to now
+      python scripts/sensors.py
+      # Using PROJECT_ID='mlops-project-abacabb' and TOPIC_ID='pubsub-sensor'
+
+      # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+      # E0000 00:00:1761162298.761872 63406587 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+
+      # Published: {'event_id': 'e-90001', 'station_id': 'A_101', 'ts_iso': '2025-10-22T19:44:58+00:00', 'kind': 'dropoff', 'delta': 1}
+      # Published: {'event_id': 'e-90002', 'station_id': 'A_101', 'ts_iso': '2025-10-22T19:45:00+00:00', 'kind': 'pickup', 'delta': 1}
+      # Published: {'event_id': 'e-90003', 'station_id': 'A_205', 'ts_iso': '2025-10-22T19:45:00+00:00', 'kind': 'dropoff', 'delta': 1}
+      # Published: {'event_id': 'e-90004', 'station_id': 'A_310', 'ts_iso': '2025-10-22T19:45:01+00:00', 'kind': 'pickup', 'delta': 1}
+      # Published: {'event_id': 'e-90005', 'station_id': 'A_205', 'ts_iso': '2025-10-22T19:45:02+00:00', 'kind': 'dropoff', 'delta': 1}
+
+
+      # NOTE: tetsing with gcloud before
+      # pull future messages
+      gcloud pubsub subscriptions pull $SUBSCRIPTION \
+             --limit=15 \
+             --auto-ack \
+             --project="$PROJECT_ID"
+
+      # ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────────┬──────────────┬────────────┬──────────────────┬────────────┐
+      # │                                                         DATA                                                         │     MESSAGE_ID    │ ORDERING_KEY │ ATTRIBUTES │ DELIVERY_ATTEMPT │ ACK_STATUS │
+      # ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────┼──────────────┼────────────┼──────────────────┼────────────┤
+      # │ {"event_id": "e-90001", "station_id": "A_205", "ts_iso": "2025-10-19T21:02:06+00:00", "kind": "dropoff", "delta": 1} │ 16637501616397770 │              │            │                  │ SUCCESS    │
+      # │ {"event_id": "e-90003", "station_id": "A_101", "ts_iso": "2025-10-19T21:02:09+00:00", "kind": "dropoff", "delta": 1} │ 16637231472208991 │              │            │                  │ SUCCESS    │
+      # │ {"event_id": "e-90002", "station_id": "A_310", "ts_iso": "2025-10-19T21:02:08+00:00", "kind": "dropoff", "delta": 1} │ 16638886842299705 │              │            │                  │ SUCCESS    │
+      # └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────────┴──────────────┴────────────┴──────────────────┴────────────┘
+    #+end_src
+
+  * Deploying the Cloud Function
+
+    #+begin_src sh
+      # NOTE: deploy cloud function
+      # the command will ask if you want to enable all necessaries sevices and APIs
+      gcloud functions deploy pubsub_to_bq \
+             --runtime python310 \
+             --trigger-topic $PUBSUB_TOPIC \
+             --entry-point pubsub_to_bq \
+             --region us-central1 \
+             --source cloud_functions/raw_ingest_to_bq \
+             --memory 128Mi \
+             --timeout 120s \
+             --allow-unauthenticated \
+             --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE \
+             --no-gen2  # NOTE: needs gen1 because pubsub does not expose http port (LLM)
+
+      # NOTE: checking
+      gcloud functions list --project=$PROJECT_ID
+
+      # delete
+      gcloud functions delete pubsub_to_bq \
+             --region us-central1 \
+             --gen2 \
+             -q
+
+    #+end_src
+
+* How to run and test
+
+
+   #+begin_src sh
+     # NOTE: Run the sensors
+     python scripts/sensors.py
+
+     # NOTE: checking if the cloud function were executed
+     gcloud functions logs read pubsub_to_bq \
+            --region=us-central1 \
+            --limit=50 \
+            --project=$PROJECT_ID
+
+     # NOTE: show the table on bigquery
+     bqbq query --use_legacy_sql=false "
+     SELECT * FROM \`${RAW_EVENT_TABLE}\`
+     LIMIT 5"
+     # +----------+------------+---------------------+---------+-------+
+     # | event_id | station_id |       ts_iso        |  kind   | delta |
+     # +----------+------------+---------------------+---------+-------+
+     # | e-90001  | A_205      | 2025-10-26 03:13:21 | pickup  |     1 |
+     # | e-90002  | A_205      | 2025-10-26 03:13:23 | pickup  |     1 |
+     # | e-90006  | A_101      | 2025-10-26 03:13:32 | pickup  |     1 |
+     # | e-90003  | A_101      | 2025-10-26 03:13:25 | dropoff |     1 |
+     # | e-90007  | A_310      | 2025-10-26 03:13:34 | pickup  |     1 |
+     # +----------+------------+---------------------+---------+-------+
+   #+end_src
+
