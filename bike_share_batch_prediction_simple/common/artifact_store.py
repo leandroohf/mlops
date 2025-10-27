@@ -220,6 +220,10 @@ class GCPArtifactStore(LocalArtifactStore):
         except Exception as e:
             print(f"Error checking if blob exists: {e}")
             return False 
+        
+    def clean_cache(self) -> None:
+        pass
+        print("Not implemented yet.")
 
 class MLflowArtifactStore(LocalArtifactStore):
 

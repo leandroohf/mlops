@@ -1,6 +1,7 @@
 kfp>=2.7.0
 google-cloud-aiplatform
 google-cloud-storage
+google-cloud-pubsub
 numpy
 pandas
 scikit-learn

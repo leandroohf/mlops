@@ -71,6 +71,14 @@ An **IAM policy** binds a principal (user, group, or service account) to one or 
 - Billing is set at the **billing account** level, like a **utility bill** for your data center.
 - Projects are linked to a billing account
 
+```sh
+# NOTE: list billing accounts
+gcloud beta billing accounts list
+
+# NOTE: get billing info for project-id
+gcloud beta billing projects describe "$PROJECT_ID"
+```
+
 ## Quotas
 
 Quotas are limited. For instance you can use an large vm you might need to request an increasing in your quota for that and can take up to 2 business day.
