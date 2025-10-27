@@ -1,7 +1,7 @@
 
 * Project Overview: MVP for Sensor Data Ingestion
 
-    Genetrated with hekp of LLMs.
+    Genetrated with help of LLMs.
 
     This project is a minimal learning prototype (MVP) that simulates inject sparse data from sensors using Google Cloud services.
     The goal is to:
@@ -55,8 +55,8 @@
       PUBSUB_TOPIC="pubsub-topic"
       SUBSCRIPTION="consumer-subscription"
 
-      RAW_EVENT_TABLE="${PROJECT_ID}.bike_streaming.raw_events"
-      FEATURE_EVENT_TABLE="${PROJECT_ID}.bike_streaming.station_features"  # NOTE: for future
+      RAW_EVENT_TABLE="${PROJECT_ID}.dataset.raw_events"
+      FEATURE_EVENT_TABLE="${PROJECT_ID}.dataset.station_features"  # NOTE: for future
     #+end_src
 
   * Creating table
@@ -124,7 +124,6 @@
 
       # NOTE: how to run and test up to now
       python scripts/sensors.py
-      # Using PROJECT_ID='mlops-project-abacabb' and TOPIC_ID='pubsub-sensor'
 
       # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
       # E0000 00:00:1761162298.761872 63406587 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
