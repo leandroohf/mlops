@@ -48,6 +48,7 @@ def preprocess(preprocessed_dataset: Output[Dataset], n_rows: int = 1000) -> Dat
     print(f"[preprocess] dataset metadata: {preprocessed_dataset.metadata}")
 
 
+
 @component(base_image=IMAGE_URI)
 def train(
     preprocessed_dataset: Input[Dataset],
