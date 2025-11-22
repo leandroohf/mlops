@@ -178,6 +178,36 @@ If you’re building an app with users in multiple countries:
 | Cloud Logging       | /var/log and journalctl for all your cloud services      |
 | Cloud Build         | CI/CD system like Jenkins or GitHub Actions              |
 
+## Authentications:  Application Default Credentials (ADC)
+
+   Rules:
+   1. Check GOOGLE_APPLICATION_CREDENTIALS (env var)
+
+```sh
+        # NOTE: needs to get the file auth output msgs
+        # Ex1:
+        export GOOGLE_APPLICATION_CREDENTIALS="/Users/user.name/mlops/sa_prod_key.json"
+
+        # Ex2:
+        export GOOGLE_APPLICATION_CREDENTIALS="/Users/user.name/.config/gcloud/application_default_credentials.json"
+```
+
+   1. If not set, check gcloud’s ADC file (~/.config/gcloud application_default_credentials.json)
+
+```sh
+      # NOTE: how to create the ADC json file
+
+      # application default. follow the link and aithenticate.
+      # This save a json file on your disk: (pay attention in the msgs)
+      # Ex: /Users/user.nae/.config/gcloud/application_default_credentials.json
+      gcloud auth application-default login
+
+      # user account.
+      gcloud auth login
+```
+
+  1. If still not found ->  use anonymous  credentials (susally fails)
+
 
 ## gcloud
 
