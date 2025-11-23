@@ -1,0 +1,2 @@
+apache-beam
+apache-beam[gcp] # NOTE: required for authetication with GCP. this install google-cloud-storage and google-cloud-auth and etc

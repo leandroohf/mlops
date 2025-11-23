@@ -1,0 +1,15 @@
+# NOTE: source .env for loading all vars
+export PROJECT_ID=your-gcp-project-id
+export REGION=us-central1
+
+export SA="my-service-account-name@${PROJECT_ID}.iam.gserviceaccount.com"
+
+export BUCKET=gs://${PROJECT_ID}-my-bucket
+
+export PUBSUB_TOPIC="projects/${PROJECT_ID}/topics/my-topic"
+export SUBSCRIPTION="projects/${PROJECT_ID}/subscriptions/my-subscription"
+
+export JOB_NAME="dataflow-streaming-job-name"
+
+export RAW_EVENT_TABLE="${PROJECT_ID}.my-dataset.raw_events"
+export FEATURES_TABLE="${PROJECT_ID}.my-dataset.feature_store"

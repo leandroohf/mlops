@@ -1,62 +1,80 @@
 
-* Project Overview: MVP for Sensor Data Ingestion
+* Phase 1: Project Overview: MVP for Sensor Data Ingestion
 
-    Genetrated with help of LLMs.
-
-    This project is a minimal learning prototype (MVP) that simulates inject sparse data from sensors using Google Cloud services.
-    The goal is to:
+    This project is a minimal learning prototype (MVP) that simulates inject
+    sparse data from sensors using Google Cloud services. The goal is to:
 
     1. Simulate sparse sensor data (e.g., bike station pickups and drop-offs).
     2. Send sensor events to a Google Cloud Pub/Sub topic.
-    3. Use a Cloud Function to consume Pub/Sub messages and write raw events into a BigQuery table.
+    3. Use a Cloud Function to consume Pub/Sub messages and write raw events
+       into a BigQuery table.
 
-    This is a first step toward building a full streaming architecture. Later phases may include additional components like a feature
-    computation layer (via Dataflow or other tools), but this MVP focuses on establishing a reliable ingestion pipeline.
+    This is a first step toward building a full streaming architecture. Later
+    phases may include additional components like a feature computation layer
+    (via Dataflow or other tools), but this MVP focuses on establishing a
+    reliable ingestion pipeline.
 
-* Why Cloud Function?
+** Why Cloud Function?
 
-  + **Latency is not a concern** at this stage, as sensor data is sparse and events do not arrive in high bursts.
-  + Cloud Functions offer a **low-maintenance, serverless option** to bridge Pub/Sub and BigQuery quickly.
-  + This project is intentionally designed as an MVP. Later, we plan to switch to Cloud Dataflow for more scalable and complex processing.
+  + **Latency is not a concern** at this stage, as sensor data is sparse and
+    events do not arrive in high bursts.
+  + Cloud Functions offer a **low-maintenance, serverless option** to bridge
+    Pub/Sub and BigQuery quickly.
+  + This project is intentionally designed as an MVP. Later, we plan to switch
+    to Cloud Dataflow for more scalable and complex processing.
 
-* BigQuery Tables
+** BigQuery Tables schema
 
   Two tables are created for this MVP:
 
-  1. **Raw Events Table** (`raw_events`):
-     Stores the exact sensor events coming from Pub/Sub.
+  1. **Raw Events Table** (`raw_events`): Stores the exact sensor events coming
+     from Pub/Sub.
 
-     | event_id | station_id | ts_iso               | kind    | delta |
-     |----------+------------+----------------------+---------+-------|
-     | e-90001  | A_101      | 2025-10-18T16:24:11Z | pickup  |     1 |
-     | e-90002  | A_101      | 2025-10-18T16:24:44Z | dropoff |     1 |
-     | e-90003  | A_205      | 2025-10-18T16:25:02Z | pickup  |     1 |
+     * Simple to insert no redundance info
 
-  2. **Feature Events Table** (`station_features`):
-     Reserved for future use by a feature computation function, not used in this MVP.
+        | event_id | station_id | ts_iso               | kind    | delta |
+        |----------+------------+----------------------+---------+-------|
+        | e-90001  | A_101      | 2025-10-18T16:24:11Z | pickup  |     1 |
+        | e-90002  | A_101      | 2025-10-18T16:24:44Z | dropoff |     1 |
+        | e-90003  | A_205      | 2025-10-18T16:25:02Z | pickup  |     1 |
 
-* Architecture Diagram (Text Description)
+  2. **Feature Events Table** (`station_features`): Reserved for future use by a
+     feature computation function, not used in this MVP.
+
+     * Simple to add remove features but require extra pivoting for training
+       (Not the scope of this project)
+
+        | station_id | feature_name     | window_len | value | as_of               |
+        |------------+------------------+------------+-------+---------------------|
+        | A_101      | pickup_count     | 2h         |     8 | 2025-11-16 02:15:00 |
+        | A_101      | avg_delta_pickup | 24h        |   3.2 | 2025-11-16 02:15:00 |
+        | A_101      | is_peak_station  | all_time   |   1.0 | 2025-11-16 02:15:00 |
+
+** Architecture Diagram (Text Description)
 
    #+BEGIN_SRC
    Sensor Simulator --> Pub/Sub Topic --> Cloud Function --> BigQuery (raw_events)
    #+END_SRC
 
-* Setup infrastructure
+** Setup infrastructure
 
   * Env variables
 
     #+begin_src sh
-      # Environment setup
+      # NOTE: Environment setup
       PROJECT_ID="mlops-project-id"
       REGION="us-central1"
       SA="service-account@mlops-project-id.iam.gserviceaccount.com"
-      BUCKET="gs://${PROJECT_ID}-bike-share-project-bucket"
+      BUCKET="gs://${PROJECT_ID}-project-bucket"
 
       PUBSUB_TOPIC="pubsub-topic"
-      SUBSCRIPTION="consumer-subscription"
+      SUBSCRIPTION="subscription"
 
-      RAW_EVENT_TABLE="${PROJECT_ID}.dataset.raw_events"
-      FEATURE_EVENT_TABLE="${PROJECT_ID}.dataset.station_features"  # NOTE: for future
+      export RAW_EVENT_TABLE="${PROJECT_ID}.bike_streaming.raw_events"
+
+      # NOTE: for phase 2
+      export FEATURE_EVENT_TABLE="${PROJECT_ID}.bike_streaming.station_features"
+      export FEATURE_PROCEDURE_NAME="mlops-project-abacabb.bike_streaming.upsert_station_features"
     #+end_src
 
   * Creating table
@@ -71,16 +89,6 @@
         ts_iso TIMESTAMP,
         kind STRING,
         delta INT64
-      )"
-
-      # NOTE: wide feature table
-      bq query --use_legacy_sql=false "
-      CREATE TABLE IF NOT EXISTS \`${FEATURE_EVENT_TABLE}\` (
-        station_id STRING,
-        feature_name STRING,
-        window_len STRING,
-        value FLOAT64,
-        as_of TIMESTAMP
       )"
 
       # NOTE: checking datasets tables were created
@@ -108,6 +116,9 @@
       # NOTE: creating the topic
       gcloud pubsub topics create $PUBSUB --project="$PROJECT_ID"
 
+      # NOTE: listing topics
+      gcloud pubsub topics list --project="$PROJECT_ID"
+
       # NOTE: guaranteing publish permission to SA. Assuming SERVICE ACCOUNT is already created before
       gcloud pubsub topics add-iam-policy-binding $PUBSUB \
              --member="serviceAccount:$SA" \
@@ -120,6 +131,11 @@
       gcloud pubsub subscriptions create $SUBSCRIPTION \
              --topic=$PUBSUB \
              --project="$PROJECT_ID"
+
+
+      # NOTE: listing and deleting subscriptions
+      gcloud pubsub subscriptions list --project="$PROJECT_ID"
+      gcloud pubsub subscriptions delete $SUBSCRIPTION --project="$PROJECT_ID"
 
 
       # NOTE: how to run and test up to now
@@ -156,17 +172,18 @@
     #+begin_src sh
       # NOTE: deploy cloud function
       # the command will ask if you want to enable all necessaries sevices and APIs
-      gcloud functions deploy pubsub_to_bq \
-             --runtime python310 \
-             --trigger-topic $PUBSUB_TOPIC \
-             --entry-point pubsub_to_bq \
-             --region us-central1 \
-             --source cloud_functions/raw_ingest_to_bq \
-             --memory 128Mi \
-             --timeout 120s \
-             --allow-unauthenticated \
-             --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE \
-             --no-gen2  # NOTE: needs gen1 because pubsub does not expose http port (LLM)
+        gcloud functions deploy pubsub_to_bq \
+              --runtime python310 \
+              --trigger-topic $PUBSUB_TOPIC \
+              --entry-point pubsub_to_bq \
+              --region us-central1 \
+              --source cloud_functions/raw_ingest_to_bq \
+              --memory 128Mi \
+              --timeout 120s \
+              --allow-unauthenticated \
+              --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE \
+              --no-gen2  # NOTE: needs gen1 because pubsub does not expose http port (LLM)
+
 
       # NOTE: checking
       gcloud functions list --project=$PROJECT_ID
@@ -176,10 +193,9 @@
              --region us-central1 \
              --gen2 \
              -q
-
     #+end_src
 
-* How to run and test
+** How to run and test
 
 
    #+begin_src sh
@@ -207,3 +223,281 @@
      # +----------+------------+---------------------+---------+-------+
    #+end_src
 
+* Phase 2: Scalable Pipeline with Cloud Dataflow
+
+   This is the second phase of our ingestion pipeline. In this version:
+
+   * We simulate a continuous, high-frequency sensor stream.
+   * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
+   * This enables scalable, windowed, and fault-tolerant processing of Pub/Sub
+     messages into BigQuery.
+
+
+   #+begin_src markdown
+     ```mermaid
+     flowchart TD
+       A[Sensor Data] --> B[Pub/Sub Topic]
+       B --> C[Dataflow Job #1<br>Raw Events → BigQuery: raw_events]
+       C --> D[Dataflow Job #2 or Batch SQL<br>Aggregations → station_features]
+     ```
+   #+end_src
+
+
+** TOR: Dataflow Jobs (Apache Beam)
+
+   PS: Shamelessly stolen from:
+   https://medium.com/@ofelipefernandez/project-processing-streaming-data-with-pub-sub-and-dataflow-631e6082c94d
+
+   Apache Beam is a unified programming model for building both batch and
+   streaming data processing pipelines. It allows you to write code once and run
+   it on various distributed processing backends, like Apache Flink, Apache
+   Spark, and Google Cloud Dataflow.
+
+   Apache Beam syntax is similar to dplyr in R:
+
+   #+begin_src python
+     # NOTE: data is sent to the next step via pipes
+     data | "Step name" >> beam.Map(my_function) \
+          | "Squared step" >> beam.Map(lambda x: x ** 2)
+   #+end_src
+
+  * Status:
+    - **Running**: listening to Pub/Sub and executing the job
+    - **Cancelled**: the job is stopped (no longer listening or processing)
+    - **Drained**: same as cancelled, but ensures no data loss
+
+  * Drain a Job (graceful shutdown)
+    - The pipeline stops accepting new input (e.g., from Pub/Sub).
+    - It continues processing any buffered or in-progress data (e.g., windowed
+      aggregations).
+    - Once all pending work is completed, the job transitions to the **Drained** state.
+
+    - Useful for:
+      - Shutting down the pipeline safely without losing data
+      - Performing upgrades or maintenance with a clean stop
+      - Switching to a new job without cancelling mid-stream
+
+  #+begin_src markdown
+    ```mermaid
+    flowchart LR
+      START[STOPPED] --> RUNNING
+      RUNNING --> DRAINING
+      DRAINING --> DRAINED
+      RUNNING --> CANCELLED
+      RUNNING --> FAILED
+    ```
+  #+end_src
+
+** Setup the cloud dataflow (Apache beam)
+
+    * env vars: We gonna use the same as before plus:
+
+      #+begin_src sh
+        # NOTE: Dataflow job name
+        JOB_NAME="bike-share-ps-to-bq" # NOTE: Unique among active jobs in the same region
+      #+end_src
+
+    * Cloud dataflow
+
+
+      1. start using dtaflow templates (easy n simple but hard to personalize)
+
+         #+begin_src sh
+           # NOTE: enable and create apache bean cloud dataflow
+           gcloud services enable \
+                  dataflow.googleapis.com --project="$PROJECT_ID"
+
+
+           gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+                  --member="serviceAccount:$SA" \
+                  --role="roles/dataflow.worker"
+
+
+           # NOTE: delete the cloud function. We dont want trigger them in this phase
+           gcloud functions delete pubsub_to_bq \
+                  --region us-central1 \
+                  --gen2 \
+                  -q
+
+           # NOTE: Create run dataflow template job (GOOD FOR QUICK TESTING. START WITH THIS THEN SWITCH TO APACHE BEAM CODE)
+           gcloud dataflow jobs run "$JOB_NAME" \
+                  --gcs-location "gs://dataflow-templates-$REGION/latest/PubSub_Subscription_to_BigQuery" \
+                  --region "$REGION" \
+                  --staging-location "$BUCKET/staging" \
+                  --service-account-email "$SA" \
+                  --worker-machine-type="n1-standard-1" \
+                  --num-workers=1 \
+                  --max-workers=1 \
+                  --parameters="inputSubscription=$SUBSCRIPTION,outputTableSpec=$RAW_EVENT_TABLE"
+
+           # NOTE: inspect the jobs
+           gcloud dataflow jobs list --region "$REGION"
+
+           JOB_ID=2025-11-15_16_52_15-3602385465536419454
+           gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
+
+           # NOTE: Give Dataflow’s service agent access to BigQuery:
+           gcloud projects add-iam-policy-binding $PROJECT_ID \
+                    --member="serviceAccount:$SA" \
+                    --role="roles/bigquery.dataEditor" \
+                    --project="$PROJECT_ID"
+
+           # NOTE: run sensor script
+           python scripts/sensors.py
+
+           # NOTE: check tables contents
+           bq query --use_legacy_sql=false "SELECT * FROM \`$PROJECT_ID.bike_streaming.raw_events\` LIMIT 10;"
+
+
+           # NOTE: how to stop job or drain
+           gcloud dataflow jobs cancel 2025-11-15_17_21_13-13963551468804225520 --region=us-central1
+           gcloud dataflow jobs drain  --region "$REGION" --job="$JOB_NAME"  # NOTE: drain = graceful stop
+
+           # NOTE: for debug (but better use the webui)
+           # NOTE: seeing logs of an execution
+           gcloud logging read \
+                  "resource.type=dataflow_step AND resource.labels.job_name=bike-share-ps-to-bq AND severity>=ERROR" \
+                  --limit=500 \
+                  --project="$PROJECT_ID"
+         #+end_src
+
+      2. using apache beam poython interface
+
+         #+begin_src sh
+           # NOTE: submitt apache beam job to dataflow
+           python scripts/create_apache_beam_stream_pipe.py &
+
+
+           # NOTE: inspect and verify jobs
+           gcloud dataflow jobs list --region "$REGION"
+
+           # NOTE: test
+           python scripts/sensors.py
+
+           bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
+         #+end_src
+
+** Features engineering
+
+    The features table change frequent because the ML models change often the
+    features are used as input.
+
+   * Features: Count Pickups/Dropoffs in Last 2 Hours & Store
+
+     1. Create the features table
+
+        #+begin_src sh
+          # NOTE: tall feature table
+          bq query --use_legacy_sql=false "
+                CREATE TABLE IF NOT EXISTS \`${FEATURE_EVENT_TABLE}\` (
+                  station_id STRING,
+                  feature_name STRING,
+                  window_len STRING,
+                  value FLOAT64,
+                  as_of TIMESTAMP
+                )"
+          station_id | feature_name       | window_len | value | as_of
+          -----------|--------------------|------------|-------|---------------------
+          A_101      | pickup_count       | 2h         | 8     | 2025-11-16 02:15:00
+          A_101      | avg_delta_pickup   | 24h        | 3.2   | 2025-11-16 02:15:00
+          A_101      | is_peak_station    | all_time   | 1.0   | 2025-11-16 02:15:00
+
+          # NOTE: list all tables
+          bq ls $PRJECT_ID:bike_streaming
+        #+end_src
+
+        * Pros:
+          * Schema is stable—never changes, no matter how many features or
+            windows.
+          * Supports tracking multiple versions or window lengths for same
+            feature.
+          * Easily query features using filters like:
+
+              #+begin_src sql
+                SELECT *
+                FROM feature_events
+                WHERE station_id = 'A_101' AND window_len = '2h'
+              #+end_src
+
+        * Crons:
+
+          * Harder to train directly with ML frameworks—requires pivoting
+
+            #+begin_src sql
+              -- NOTE: Pivot for training
+              SELECT *
+              FROM (
+                   SELECT station_id, feature_name, value
+                   FROM feature_events
+                   WHERE window_len = '2h' AND as_of = 'latest'
+              )
+
+              PIVOT (
+                    MAX(value) FOR feature_name IN ('pickup_count', 'dropoff_count')
+              )
+            #+end_src
+
+          * Might need more joins during training/inference
+          * More costly
+
+              #+begin_src sql
+                SELECT
+                  station_id,
+                  COUNTIF(kind = 'pickup') AS pickup_count,
+                  COUNTIF(kind = 'dropoff') AS dropoff_count,
+                  CURRENT_TIMESTAMP() AS computed_at
+
+                FROM
+                  `mlops-project-abacabb.bike_streaming.raw_events`
+
+                WHERE
+                  ts_iso >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 HOUR)
+
+                GROUP BY station_id;
+              #+end_src
+
+    * deploying the cloud function
+
+      #+begin_src sh
+        # NOTE: deploy cloud function to perform features engineering
+        gcloud functions deploy update_station_features \
+               --runtime python310 \
+               --trigger-http \
+               --entry-point compute_and_upsert_features \
+               --region us-central1 \
+               --source cloud_functions/update_station_features \
+               --memory 128Mi \
+               --timeout 120s \
+               --allow-unauthenticated \
+               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE,FEATURE_EVENT_TABLE=$FEATURE_EVENT_TABLE \
+               --no-gen2
+
+
+        # NOTE: tryn gen 2
+        gcloud functions deploy update_station_features \
+               --runtime python310 \
+               --trigger-http \
+               --entry-point compute_and_upsert_features \
+               --region us-central1 \
+               --source cloud_functions/update_station_features \
+               --memory 128Mi \
+               --timeout 120s \
+               --allow-unauthenticated \
+               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE,FEATURE_EVENT_TABLE=$FEATURE_EVENT_TABLE
+
+        # NOTE: checking
+        gcloud functions list --project=$PROJECT_ID
+        gcloud functions describe update_station_features --region=us-central1 --format="value(httpsTrigger.url)"
+
+        # NOTE: trigger for testing
+        gcloud functions call update_station_features --region us-central1
+
+        # NOTE inspect logs
+        gcloud functions logs read update_station_features --region=us-central1 --limit=50
+
+
+        bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+      #+end_src
+
+
+** How to test

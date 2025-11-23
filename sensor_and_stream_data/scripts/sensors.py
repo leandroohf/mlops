@@ -11,12 +11,12 @@ STATIONS = ["A_101", "A_205", "A_310"]
 KINDS = ["pickup", "dropoff"]
 
 PROJECT_ID = os.getenv("PROJECT_ID")
-TOPIC_ID = os.getenv("PUBSUB")
+TOPIC_ID = os.getenv("PUBSUB_TOPIC")
 
 print(f"Using PROJECT_ID='{PROJECT_ID}' and TOPIC_ID='{TOPIC_ID}'\n\n")
 
 publisher = pubsub_v1.PublisherClient()
-topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+topic_path = TOPIC_ID# publisher.topic_path(PROJECT_ID, TOPIC_ID)
 
 def generate_event(event_counter: int) -> dict:
 
@@ -63,4 +63,4 @@ def simulate_sensors(n_events: int = 5, delay_seconds: float = 1.0) -> None:
 
 
 if __name__ == "__main__":
-    simulate_sensors(n_events=30, delay_seconds=2)
+    simulate_sensors(n_events=7, delay_seconds=2)
