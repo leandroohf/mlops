@@ -190,6 +190,9 @@ If you’re building an app with users in multiple countries:
 
         # Ex2:
         export GOOGLE_APPLICATION_CREDENTIALS="/Users/user.name/.config/gcloud/application_default_credentials.json"
+
+        # NOTE: Verify the credentials file is valid and readable:
+        gcloud auth application-default print-access-token
 ```
 
    1. If not set, check gcloud’s ADC file (~/.config/gcloud application_default_credentials.json)
