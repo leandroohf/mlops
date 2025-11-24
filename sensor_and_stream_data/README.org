@@ -223,7 +223,7 @@
      # +----------+------------+---------------------+---------+-------+
    #+end_src
 
-* Phase 2: Scalable Pipeline with Cloud Dataflow
+* Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
 
    This is the second phase of our ingestion pipeline. In this version:
 
@@ -231,7 +231,6 @@
    * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
    * This enables scalable, windowed, and fault-tolerant processing of Pub/Sub
      messages into BigQuery.
-
 
    #+begin_src markdown
      ```mermaid
@@ -361,7 +360,7 @@
                   --project="$PROJECT_ID"
          #+end_src
 
-      2. using apache beam poython interface
+      2. using apache beam python interface
 
          #+begin_src sh
            # NOTE: submitt apache beam job to dataflow
@@ -459,21 +458,7 @@
     * deploying the cloud function
 
       #+begin_src sh
-        # NOTE: deploy cloud function to perform features engineering
-        gcloud functions deploy update_station_features \
-               --runtime python310 \
-               --trigger-http \
-               --entry-point compute_and_upsert_features \
-               --region us-central1 \
-               --source cloud_functions/update_station_features \
-               --memory 128Mi \
-               --timeout 120s \
-               --allow-unauthenticated \
-               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE,FEATURE_EVENT_TABLE=$FEATURE_EVENT_TABLE \
-               --no-gen2
-
-
-        # NOTE: tryn gen 2
+        # NOTE: deploy cloud function to perform features engineering (gen 2)
         gcloud functions deploy update_station_features \
                --runtime python310 \
                --trigger-http \
@@ -495,9 +480,52 @@
         # NOTE inspect logs
         gcloud functions logs read update_station_features --region=us-central1 --limit=50
 
-
         bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
       #+end_src
 
+    * deploying the cloud scheduler
 
-** How to test
+
+       #+begin_src sh
+         # NOTE: get cloud funct http trigger
+         gcloud functions list --project=$PROJECT_ID
+         gcloud functions describe update_station_features \
+                --region=${REGION} \
+                --format="value(serviceConfig.uri)"
+
+         URI="https://update-station-features-cc5zus76ja-uc.a.run.app"
+         # NOTE: schedule every 15 minutes
+         gcloud scheduler jobs create http update-station-features-job \
+                --schedule="*/15 * * * *" \
+                --http-method=POST \
+                --uri=${URI} \
+                --message-body="{}" \
+                --time-zone="America/Los_Angeles" \
+                --location=${REGION}
+
+         # NOTE: inspect
+         gcloud scheduler jobs list --location=$REGION
+
+         gcloud scheduler jobs describe update-station-features-job --location=$REGION
+
+         # NOTE: test solution
+
+         # 0) make sure dataflow is running
+         gcloud dataflow jobs list --region "$REGION"
+         # 1) inspect the state of features table
+         bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+         # 2) run sensor
+         python scripts/sensors.py
+         # 3): manually trigger the job
+         gcloud scheduler jobs run update-station-features-job --location=${REGION}
+         # 4) inspect the state of features table
+         bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+       #+end_src
+
+* Phase 3: Scalable Pipeline
+
+   * GOAL:
+     * db should be scalable
+     * features engineering should be scalable (dataflow as batch)
+       * replace cloud function by dataflow batch
+
