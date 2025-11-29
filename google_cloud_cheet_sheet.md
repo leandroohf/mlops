@@ -178,7 +178,7 @@ If you’re building an app with users in multiple countries:
 | Cloud Logging       | /var/log and journalctl for all your cloud services      |
 | Cloud Build         | CI/CD system like Jenkins or GitHub Actions              |
 
-## Authentications:  Application Default Credentials (ADC)
+## Authentications: Application Default Credentials (ADC)
 
    Rules:
    1. Check GOOGLE_APPLICATION_CREDENTIALS (env var)

@@ -241,6 +241,9 @@
      ```
    #+end_src
 
+   * The features are simple and wont take longer. ALso they are required every
+     hour. We use a scheduler and cloud function to compute the features
+
 
 ** TOR: Dataflow Jobs (Apache Beam)
 
@@ -523,6 +526,12 @@
        #+end_src
 
 * Phase 3: Scalable Pipeline
+
+   * The number of countries,cities, station are higher
+   * The sensor data are high volume (ingestion needs to scale)
+   * The feature get complexed and need to be computed more often (features engineering needs to scale n dbs be partiiotned)
+     * partition by day and station 
+
 
    * GOAL:
      * db should be scalable
