@@ -1,6 +1,15 @@
 
 * Phase 1: Project Overview: MVP for Sensor Data Ingestion
 
+
+  | what                 | frequency          | process duration | scope             | Comment             |
+  |----------------------+--------------------+------------------+-------------------+---------------------|
+  | data ingestion       | close to real time | < 5 minutes      | simple and sparse |                     |
+  | features engineering |                    |                  |                   | not implemented yet |
+  | ml training          |                    |                  |                   | out of scope        |
+  | ml predictions       |                    |                  |                   | out of scope        |
+
+
     This project is a minimal learning prototype (MVP) that simulates inject
     sparse data from sensors using Google Cloud services. The goal is to:
 
@@ -30,7 +39,7 @@
   1. **Raw Events Table** (`raw_events`): Stores the exact sensor events coming
      from Pub/Sub.
 
-     * Simple to insert no redundance info
+     * Optimized (Simple) for fast inserts; avoids redundancy
 
         | event_id | station_id | ts_iso               | kind    | delta |
         |----------+------------+----------------------+---------+-------|
@@ -73,7 +82,7 @@
       export RAW_EVENT_TABLE="${PROJECT_ID}.bike_streaming.raw_events"
 
       # NOTE: for phase 2
-      export FEATURE_EVENT_TABLE="${PROJECT_ID}.bike_streaming.station_features"
+      export FEATURES_TABLE="${PROJECT_ID}.bike_streaming.station_features"
       export FEATURE_PROCEDURE_NAME="mlops-project-abacabb.bike_streaming.upsert_station_features"
     #+end_src
 
@@ -114,22 +123,22 @@
       gcloud services enable pubsub.googleapis.com --project=$PROJECT_ID
 
       # NOTE: creating the topic
-      gcloud pubsub topics create $PUBSUB --project="$PROJECT_ID"
+      gcloud pubsub topics create $PUBSUB_TOPIC --project="$PROJECT_ID"
 
       # NOTE: listing topics
       gcloud pubsub topics list --project="$PROJECT_ID"
 
       # NOTE: guaranteing publish permission to SA. Assuming SERVICE ACCOUNT is already created before
-      gcloud pubsub topics add-iam-policy-binding $PUBSUB \
+      gcloud pubsub topics add-iam-policy-binding $PUBSUB_TOPIC \
              --member="serviceAccount:$SA" \
              --role="roles/pubsub.publisher" \
              --project="$PROJECT_ID"
 
 
-      # NOTE: subscribe SA to topic PUBSUB (he can publish to the right topic)
+      # NOTE: subscribe SA to topic PUBSUB_TOPIC (he can publish to the right topic)
       # subscription is for consumers
       gcloud pubsub subscriptions create $SUBSCRIPTION \
-             --topic=$PUBSUB \
+             --topic=$PUBSUB_TOPIC \
              --project="$PROJECT_ID"
 
 
@@ -172,7 +181,8 @@
     #+begin_src sh
       # NOTE: deploy cloud function
       # the command will ask if you want to enable all necessaries sevices and APIs
-        gcloud functions deploy pubsub_to_bq \
+      # the source code is in cloud_functions/raw_ingest_to_bq/
+      gcloud functions deploy pubsub_to_bq \
               --runtime python310 \
               --trigger-topic $PUBSUB_TOPIC \
               --entry-point pubsub_to_bq \
@@ -183,7 +193,6 @@
               --allow-unauthenticated \
               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE \
               --no-gen2  # NOTE: needs gen1 because pubsub does not expose http port (LLM)
-
 
       # NOTE: checking
       gcloud functions list --project=$PROJECT_ID
@@ -209,7 +218,7 @@
             --project=$PROJECT_ID
 
      # NOTE: show the table on bigquery
-     bqbq query --use_legacy_sql=false "
+     bq query --use_legacy_sql=false "
      SELECT * FROM \`${RAW_EVENT_TABLE}\`
      LIMIT 5"
      # +----------+------------+---------------------+---------+-------+
@@ -225,24 +234,37 @@
 
 * Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
 
-   This is the second phase of our ingestion pipeline. In this version:
 
-   * We simulate a continuous, high-frequency sensor stream.
-   * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
-   * This enables scalable, windowed, and fault-tolerant processing of Pub/Sub
-     messages into BigQuery.
+ | what                 | frequency          | process duration | scope                   | changes                                  | comment                                |
+ |----------------------+--------------------+------------------+-------------------------+------------------------------------------+----------------------------------------|
+ | data ingestion       | close to real time | < 5 minutes      | simple with high volume | switched from Cloud Function -> Dataflow | data ingested as soon as created       |
+ | features engineering | every 30 minutes   | < 15 minutes     | simple                  | new (not present in Phase 1)             |                                        |
+ | ml training          | every 2 hour       | < 30 minutes     | one model for all data  | still out of scope                       |                                        |
+ | ml predictions       | every 1 hour       | < 10 minutes     |                         | still out of scope                       | multiple runs due to changing features |
+ * NOTEs:
+    * ml model training and prediction is out of the scope of this project
 
-   #+begin_src markdown
-     ```mermaid
-     flowchart TD
-       A[Sensor Data] --> B[Pub/Sub Topic]
-       B --> C[Dataflow Job #1<br>Raw Events → BigQuery: raw_events]
-       C --> D[Dataflow Job #2 or Batch SQL<br>Aggregations → station_features]
-     ```
-   #+end_src
+     This is the second phase of our ingestion pipeline. In this version:
 
-   * The features are simple and wont take longer. ALso they are required every
-     hour. We use a scheduler and cloud function to compute the features
+    * We simulate a continuous, high-frequency sensor stream.
+    * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
+    * This enables scalable data injection and fault-tolerant processing of
+      Pub/Sub messages into BigQuery.
+    * We also introduce a feature computation layer to aggregate raw events into
+      useful features. In this phase it is not necessary to scale because the
+      features are simple and not required often.
+
+    #+begin_src markdown
+      ```mermaid
+      flowchart TD
+        A[Sensor Data] --> B[Pub/Sub Topic]
+        B --> C[Dataflow Job #1<br>Raw Events → BigQuery: raw_events]
+        C --> D[Dataflow Job #2 or Batch SQL<br>Aggregations → station_features]
+      ```
+    #+end_src
+
+    * The features are simple and wont take longer. ALso they are required every
+      hour. We use a scheduler and cloud function to compute the features
 
 
 ** TOR: Dataflow Jobs (Apache Beam)
@@ -296,13 +318,14 @@
 
       #+begin_src sh
         # NOTE: Dataflow job name
-        JOB_NAME="bike-share-ps-to-bq" # NOTE: Unique among active jobs in the same region
+        JOB_NAME="bike-share-raw-events" # NOTE: Unique among active jobs in the same region
       #+end_src
 
     * Cloud dataflow
 
 
-      1. start using dtaflow templates (easy n simple but hard to personalize)
+      1. **Option 1**: start using dtaflow templates (easy n simple but hard to
+         personalize)
 
          #+begin_src sh
            # NOTE: enable and create apache bean cloud dataflow
@@ -358,12 +381,12 @@
            # NOTE: for debug (but better use the webui)
            # NOTE: seeing logs of an execution
            gcloud logging read \
-                  "resource.type=dataflow_step AND resource.labels.job_name=bike-share-ps-to-bq AND severity>=ERROR" \
+                  "resource.type=dataflow_step AND resource.labels.job_name=bike-share-raw-events AND severity>=ERROR" \
                   --limit=500 \
                   --project="$PROJECT_ID"
          #+end_src
 
-      2. using apache beam python interface
+      2. **Option 2**: using apache beam python interface
 
          #+begin_src sh
            # NOTE: submitt apache beam job to dataflow
@@ -391,7 +414,7 @@
         #+begin_src sh
           # NOTE: tall feature table
           bq query --use_legacy_sql=false "
-                CREATE TABLE IF NOT EXISTS \`${FEATURE_EVENT_TABLE}\` (
+                CREATE TABLE IF NOT EXISTS \`${FEATURES_TABLE}\` (
                   station_id STRING,
                   feature_name STRING,
                   window_len STRING,
@@ -462,6 +485,7 @@
 
       #+begin_src sh
         # NOTE: deploy cloud function to perform features engineering (gen 2)
+        # source code located in cloud_functions/update_station_features/
         gcloud functions deploy update_station_features \
                --runtime python310 \
                --trigger-http \
@@ -471,7 +495,7 @@
                --memory 128Mi \
                --timeout 120s \
                --allow-unauthenticated \
-               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE,FEATURE_EVENT_TABLE=$FEATURE_EVENT_TABLE
+               --set-env-vars=RAW_EVENT_TABLE=$RAW_EVENT_TABLE,FEATURES_TABLE=$FEATURES_TABLE
 
         # NOTE: checking
         gcloud functions list --project=$PROJECT_ID
@@ -488,7 +512,6 @@
 
     * deploying the cloud scheduler
 
-
        #+begin_src sh
          # NOTE: get cloud funct http trigger
          gcloud functions list --project=$PROJECT_ID
@@ -497,9 +520,9 @@
                 --format="value(serviceConfig.uri)"
 
          URI="https://update-station-features-cc5zus76ja-uc.a.run.app"
-         # NOTE: schedule every 15 minutes
+         # NOTE: schedule every 30 minutes
          gcloud scheduler jobs create http update-station-features-job \
-                --schedule="*/15 * * * *" \
+                --schedule="*/30 * * * *" \
                 --http-method=POST \
                 --uri=${URI} \
                 --message-body="{}" \
@@ -527,14 +550,98 @@
 
 * Phase 3: Scalable Pipeline
 
+  | what                 | frequency          | process duration        | scope                       | changes                                       | description                                |
+  |----------------------+--------------------+-------------------------+-----------------------------+-----------------------------------------------+--------------------------------------------|
+  | data ingestion       | close to real time | < 5 minutes             | simple with high volume     | same ingestion pattern, higher global scale   | data are ingested as soon as it is created |
+  | features engineering | every 25 minutes   | < 1h                    | complex                     | upgraded from simple -> complex + higher freq |                                            |
+  | ml training          | every 2 hour       | < 1h                    | one model per region        | switched from 1 global model -> per region    | 1 model per city/region                    |
+  | ml predictions       | every 25 minutes   | < 20 minutes per region | per region for next 3 hours | higher frequency + regionalized predictions   |                                            |
+  * NOTEs:
+    * regions can be: 1 city (moderate size), a group of city (for small cities)
+      or neighborhoods for large cities
+    * For simplicty we gonna treat a region as a city
+    * ml model training and prediction is out of the scope of this project
+
+  In Phase 3 we have the qreuirments that project grew up to different
+  locations, cities and countries and the feature engineering are more complex
+  and requireed to higher frequency than before (TODO define this parameters)
+
+   For most of the cities parttioning the raw_events table and features tables
+   by day will be enough, but for large cities like New York, Sao Paulo and
+   London the partitioning by date wont be enough.Because of this cases we will
+   cluster the tables by station_id and citties.
+
+   Here is an summary of the requirements:
+
    * The number of countries,cities, station are higher
    * The sensor data are high volume (ingestion needs to scale)
-   * The feature get complexed and need to be computed more often (features engineering needs to scale n dbs be partiiotned)
-     * partition by day and station 
+   * The feature get complex and need to be computed more often (features
+     engineering needs to scale n dbs be partitioned anc clustered
+     * partition by day
+     * clustered by station_id and cities
 
-
-   * GOAL:
+   GOAL:
      * db should be scalable
      * features engineering should be scalable (dataflow as batch)
        * replace cloud function by dataflow batch
 
+     * Create the raw_events and station_features table
+       * we decide to partitioning raw events table for quick ingestion and also
+         provide better reads
+       * we decide to partiotining and cluster features table for good ingestion
+         but better reads.
+
+        #+begin_src sh
+          # NOTE: list all tables
+          bq ls $PRJECT_ID:bike_streaming
+
+          # NOTE: delete old tables
+          bq rm -f "${RAW_EVENT_TABLE}"
+          bq rm -f "${FEATURES_TABLE}"
+
+          # NOTE:
+          # NOTE: raw event table
+          # PS: wee need double quotes for bash expansion
+          bq query --use_legacy_sql=false "
+          CREATE TABLE IF NOT EXISTS \`${RAW_EVENT_TABLE}\` (
+            event_id STRING,
+            station_id STRING,
+            ts_iso TIMESTAMP,
+            kind STRING,
+            delta INT64,
+            event_date DATE GENERATED ALWAYS AS (DATE(ts_iso)) STORED -- NOTE: STORED = materialized (not virtuak) column (required for partitioning)
+          )
+          PARTITION BY event_date
+          "
+
+          # NOTE: features table
+          # PS: wee need double quotes for bash expansion
+          bq query --use_legacy_sql=false "
+          CREATE TABLE IF NOT EXISTS \`${FEATURES_TABLE}\` (
+            city_id STRING,
+            station_id STRING,
+            feature_name STRING,
+            window_len STRING,
+            value FLOAT64,
+            as_of TIMESTAMP,
+            -- NOTE: STORED = materialized (not virtuak) column (required for partitioning)
+            event_date DATE GENERATED ALWAYS AS (DATE(as_of)) STORED
+          )
+          PARTITION BY event_date
+          CLUSTER BY city_id, station_id; -- NOTE: like sorting by city first, then by station_id within each city
+          "
+        #+end_src
+
+     * Features engineering
+
+       + Initial version: Cloud Run Job triggered by Cloud Scheduler (We won't
+         implement Cloud Run Job in this tutorial)
+         - Suitable for BigQuery-based features
+         - Handles up to ~10M rows per run
+         - Simple to deploy and observe
+
+       + Planned migration path:
+         - Switch to Apache Beam when:
+           - Feature logic becomes complex (Python, joins, custom rules)
+           - Data scale increases beyond 10–50M rows
+         - Use Dataflow (Apache Beam) as scalable backend

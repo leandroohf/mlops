@@ -1,32 +1,42 @@
+
 * Cloud Service Mapping: GCP vs AWS vs Azure
 
-| Category                   | Google Cloud               | AWS                               | Azure                                       | Application                                    | Used by |
-|----------------------------+----------------------------+-----------------------------------+---------------------------------------------+------------------------------------------------+---------|
-| Object Storage             | Cloud Storage (GCS)        | S3                                | Azure Blob Storage                          | Raw storage for files, datasets, ML artifacts  | DE, DS  |
-| Data Scheduler             | Cloud Scheduler            | EventBridge / CloudWatch Events   | Logic Apps / Timer Trigger                  | Trigger jobs on schedules or cron              | DE      |
-| **Workflow Orchestration** | Cloud Composer (Airflow)   | Managed Airflow (MWAA)            | Data Factory Pipelines / Azure ML Pipelines | DAGs and orchestration for ETL or ML workflows | DE, MLE |
-| **Queue Service**          | Pub/Sub (pull/sub model)   | SQS (Simple Queue Service)        | Azure Queue Storage / Service Bus Queue     | Decouple systems with async queue for tasks    | DE, MLE |
-| Fully Managed ETL/ELT      | Cloud Data Fusion          | AWS Glue                          | Azure Data Factory                          | Drag‑and‑drop or managed ETL/ELT               | DE      |
-| File‑based Ingest          | Storage Transfer Service   | AWS DataSync                      | Azure Data Factory Copy Activity            | Move files between buckets, on‑prem, FTP, etc. | DE      |
-| Change Data Capture (CDC)  | Datastream                 | DMS (Database Migration Service)  | ADF CDC / SQL CDC                           | Real‑time DB change replication                | DE      |
-| Data Processing (ETL)      | Dataflow (Apache Beam)     | Data Pipeline / Kinesis Analytics | Stream Analytics / Data Factory             | Batch/stream transformations                   | DE      |
-| Serverless Compute         | Cloud Functions            | Lambda                            | Azure Functions                             | Event-driven data/ML logic                     | DE, MLE |
-| Data Warehouse             | BigQuery                   | Redshift                          | Synapse Analytics                           | Analytical SQL warehouse                       | DS, DE  |
-| Stream Messaging           | Pub/Sub                    | MSK / SNS+SQS                     | Event Hubs / Service Bus                    | Messaging + streaming ingestion                | DE      |
-| Managed Kafka              | Pub/Sub (Kafka alt.)       | MSK (Managed Kafka)               | HDInsight Kafka / Confluent Cloud           | Kafka-compatible event streams                 | DE      |
-| ML Platform                | Vertex AI                  | SageMaker                         | Azure Machine Learning                      | Train, deploy, monitor ML models               | MLE, DS |
-| Feature Storage            | Vertex AI Feature Store    | SageMaker Feature Store           | Azure ML Feature Store                      | Centralized features for training + serving    | MLE     |
-| Model Drift/Bias Monitor   | Vertex Model Monitoring    | SageMaker Model Monitor           | Azure Responsible AI Dashboard              | Detect drift, bias, model health degradation   | MLE     |
-| Logs & Metrics             | Cloud Logging + Monitoring | CloudWatch + CloudTrail           | Azure Monitor + Log Analytics               | Metrics, logs, tracing, audit                  | DE, MLE |
-| Data Catalog               | Data Catalog               | Glue Data Catalog                 | Microsoft Purview                           | Data discovery, schema, governance             | DE      |
-| Container Registry         | Artifact Registry (Docker) | ECR                               | Azure Container Registry                    | Save Docker/OCI images                         | DE, MLE |
-| Kubernetes Platform        | GKE                        | EKS                               | AKS                                         | Managed Kubernetes clusters                    | DE, MLE |
-| DNS Hosting                | Cloud DNS                  | Route 53                          | Azure DNS                                   | Manage DNS zones                               | DE      |
-| Secret Management          | Secret Manager             | AWS Secrets Manager               | Azure Key Vault                             | Manage credentials, passwords, API keys        | DE, MLE |
-| Command Line Tool          | gcloud CLI                 | AWS CLI                           | Azure CLI                                   | Infrastructure management                      | DE, MLE |
-| Storage CLI Tool           | gsutil                     | AWS CLI (S3)                      | AzCopy / Azure Storage CLI                  | Manage bucket objects                          | DE      |
-**Legend:**
-- **DS** = Data Scientist
-- **DE** = Data Engineer
-- **MLE** = Machine Learning Engineer
+ | Category                   | Google Cloud               | AWS                               | Azure                                       | Application                                    | Used by |
+ |----------------------------+----------------------------+-----------------------------------+---------------------------------------------+------------------------------------------------+---------|
+ | Object Storage             | Cloud Storage (GCS)        | S3                                | Azure Blob Storage                          | Raw storage for files, datasets, ML artifacts  | DE, DS  |
+ | Data Scheduler             | Cloud Scheduler            | EventBridge / CloudWatch Events   | Logic Apps / Timer Trigger                  | Trigger jobs on schedules or cron              | DE      |
+ | **Workflow Orchestration** | Cloud Composer (Airflow)   | Managed Airflow (MWAA)            | Data Factory Pipelines / Azure ML Pipelines | DAGs and orchestration for ETL or ML workflows | DE, MLE |
+ | **Queue Service**          | Pub/Sub (pull/sub model)   | SQS (Simple Queue Service)        | Azure Queue Storage / Service Bus Queue     | Decouple systems with async queue for tasks    | DE, MLE |
+ | Fully Managed ETL/ELT      | Cloud Data Fusion          | AWS Glue                          | Azure Data Factory                          | Drag‑and‑drop or managed ETL/ELT               | DE      |
+ | File‑based Ingest          | Storage Transfer Service   | AWS DataSync                      | Azure Data Factory Copy Activity            | Move files between buckets, on‑prem, FTP, etc. | DE      |
+ | Change Data Capture (CDC)  | Datastream                 | DMS (Database Migration Service)  | ADF CDC / SQL CDC                           | Real‑time DB change replication                | DE      |
+ | Data Processing (ETL)      | Dataflow (Apache Beam)     | Data Pipeline / Kinesis Analytics | Stream Analytics / Data Factory             | Batch/stream transformations                   | DE      |
+ | Serverless Compute         | Cloud Functions/Jobs       | Lambda                            | Azure Functions                             | Event-driven data/ML logic                     | DE, MLE |
+ | Data Warehouse             | BigQuery                   | Redshift                          | Synapse Analytics                           | Analytical SQL warehouse                       | DS, DE  |
+ | Stream Messaging           | Pub/Sub                    | MSK / SNS+SQS                     | Event Hubs / Service Bus                    | Messaging + streaming ingestion                | DE      |
+ | Managed Kafka              | Pub/Sub (Kafka alt.)       | MSK (Managed Kafka)               | HDInsight Kafka / Confluent Cloud           | Kafka-compatible event streams                 | DE      |
+ | ML Platform                | Vertex AI                  | SageMaker                         | Azure Machine Learning                      | Train, deploy, monitor ML models               | MLE, DS |
+ | Feature Storage            | Vertex AI Feature Store    | SageMaker Feature Store           | Azure ML Feature Store                      | Centralized features for training + serving    | MLE     |
+ | Model Drift/Bias Monitor   | Vertex Model Monitoring    | SageMaker Model Monitor           | Azure Responsible AI Dashboard              | Detect drift, bias, model health degradation   | MLE     |
+ | Logs & Metrics             | Cloud Logging + Monitoring | CloudWatch + CloudTrail           | Azure Monitor + Log Analytics               | Metrics, logs, tracing, audit                  | DE, MLE |
+ | Data Catalog               | Data Catalog               | Glue Data Catalog                 | Microsoft Purview                           | Data discovery, schema, governance             | DE      |
+ | Container Registry         | Artifact Registry (Docker) | ECR                               | Azure Container Registry                    | Save Docker/OCI images                         | DE, MLE |
+ | Kubernetes Platform        | GKE                        | EKS                               | AKS                                         | Managed Kubernetes clusters                    | DE, MLE |
+ | DNS Hosting                | Cloud DNS                  | Route 53                          | Azure DNS                                   | Manage DNS zones                               | DE      |
+ | Secret Management          | Secret Manager             | AWS Secrets Manager               | Azure Key Vault                             | Manage credentials, passwords, API keys        | DE, MLE |
+ | Command Line Tool          | gcloud CLI                 | AWS CLI                           | Azure CLI                                   | Infrastructure management                      | DE, MLE |
+ | Storage CLI Tool           | gsutil                     | AWS CLI (S3)                      | AzCopy / Azure Storage CLI                  | Manage bucket objects                          | DE      |
+ **Legend:**
+ - **DS** = Data Scientist
+ - **DE** = Data Engineer
+ - **MLE** = Machine Learning Engineer
 
+* Cloud services and scales
+
+| Technical Category       | Google Cloud Product   | Best For                               | Practical Scale Limit         | Notes                                                |
+|--------------------------+------------------------+----------------------------------------+-------------------------------+------------------------------------------------------|
+| Serverless Compute       | Cloud Functions        | Simple SQL triggers / alerts           | ~50K–500K rows                | <9 min timeout, limited RAM/CPU                      |
+| Serverless Compute       | Cloud Run Jobs         | Medium-scale SQL or Python upserts     | ~10M–50M rows per job         | 60-min timeout, more RAM/CPU, better for batching    |
+| Data Warehouse           | Scheduled Query        | Periodic SQL-only pipelines            | ~10M rows (with pruning)      | Very reliable for native SQL workflows               |
+| Data Processing (ETL)    | Apache Beam (Dataflow) | Complex logic / large-scale / streaming| 50M+ rows or complex transforms| Use for streaming, joins, cross-source pipelines     |
+| Distributed Computing    | Spark (Dataproc)       | Massive scale batch processing         | 100M+ rows, TBs of data       | More ops-heavy, costlier but very scalable           |

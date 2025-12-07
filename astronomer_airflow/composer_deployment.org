@@ -1,6 +1,6 @@
 
 
-Composer is airflow set and ran by google as service
+**Composer is airflow set and ran by google as service**
 
 
 * How to set composer
