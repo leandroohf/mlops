@@ -1,0 +1,4 @@
+{"event_id": "e-10001", "station_id": "A_101", "ts_iso": "2025-12-13T10:00:00Z", "kind": "pickup",  "delta": 1}
+{"event_id": "e-10002", "station_id": "A_101", "ts_iso": "2025-12-13T10:01:00Z", "kind": "dropoff", "delta": 1}
+{"event_id": "e-10003", "station_id": "A_205", "ts_iso": "2025-12-13T10:02:00Z", "kind": "pickup",  "delta": 1}
+{"event_id": "e-10004", "station_id": "A_205", "ts_iso": "2025-12-13T10:03:00Z", "kind": "dropoff", "delta": 1}

@@ -25,12 +25,16 @@ def generate_event(event_counter: int) -> dict:
     ts_iso = datetime.now(timezone.utc).isoformat(timespec='seconds')
     delta = +1  # fixed in your example; could randomize or alternate if needed
     event_id = f"e-{90000 + event_counter:05d}"
+
+    event_date = datetime.now(timezone.utc).date().isoformat()
+
     return {
         "event_id": event_id,
         "station_id": station_id,
         "ts_iso": ts_iso,
         "kind": kind,
-        "delta": delta
+        "delta": delta,
+        "event_date": event_date
     }
 
 def publish_event(event_data: dict):

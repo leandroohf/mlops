@@ -3,16 +3,23 @@ import os
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, WorkerOptions
 
-
 PROJECT_ID = os.getenv('PROJECT_ID', '')
 PUBSUB_TOPIC = os.getenv('PUBSUB_TOPIC', '')
+SUBSCRIPTION_NAME = os.getenv('SUBSCRIPTION', '')
 
-BQ_TABLE = os.getenv('RAW_EVENT_TABLE', '')
+RAW_EVENT_TABLE = os.getenv('RAW_EVENT_TABLE', '')
 
 BUCKET_NAME = os.getenv('BUCKET_NAME', '')
 
 DATAFLOW_SERVICE_ACCOUNT = os.getenv('SA', '')
-JOB_NAME = os.getenv("JOB_NAME")
+JOB_NAME = os.getenv("INJECT_SENSOR_DATA_JOB_NAME")
+
+print(f"PROJECT_ID={PROJECT_ID}, PUBSUB_TOPIC={PUBSUB_TOPIC}, RAW_EVENT_TABLE={RAW_EVENT_TABLE}, JOB_NAME={JOB_NAME}")
+
+def print_debug_element(row):
+    print("[DEBUG] Element Type:", type(row))
+    print("[DEBUG] Element Content:", row)
+    return row
 
 class ParsePubSubMessage(beam.DoFn):
 
@@ -25,6 +32,7 @@ class ParsePubSubMessage(beam.DoFn):
             "ts_iso": record["ts_iso"],
             "kind": record["kind"],
             "delta": int(record["delta"]),
+            "event_date": record["event_date"]
         }
 
 def launch_stream_pipeline():
@@ -55,12 +63,24 @@ def launch_stream_pipeline():
         (
             p
             # NOTE: read from pubsub (source)
-            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=PUBSUB_TOPIC)
+            # outputs a PCollection of messages (byte strings)
+            # Ex: b'{"event_id": "e-90001", "station_id": "A_205", "ts_iso": "2025-12-08T00:04:47+00:00", "kind": "pickup", "delta": 1}'
+            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(subscription=SUBSCRIPTION_NAME)
             # NOTE: run the code defined in ParsePubSubMessage.process() (transform)
+            # outputs a PCollection of dicts (Dict[str, Any]). Ex:
+            # {
+            # 'event_id': 'e-90001',
+            # 'station_id': 'A_205',
+            # 'ts_iso': '2025-12-08T00:04:47+00:00',
+            # 'kind': 'pickup',
+            # 'delta': 1
+            # 'event_date': '2025-12-08'
+            # }
             | 'ParseJSON' >> beam.ParDo(ParsePubSubMessage())
+            | 'DebugPrint' >> beam.Map(lambda row: print_debug_element(row))
             # NOTE: write in table with schema (sink = store)
             | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-                table=BQ_TABLE,
+                table=RAW_EVENT_TABLE,
                 schema={
                     'fields': [
                         {'name': 'event_id', 'type': 'STRING', 'mode': 'REQUIRED'},
@@ -68,6 +88,7 @@ def launch_stream_pipeline():
                         {'name': 'ts_iso', 'type': 'STRING', 'mode': 'REQUIRED'},
                         {'name': 'kind', 'type': 'STRING', 'mode': 'REQUIRED'},
                         {'name': 'delta', 'type': 'INTEGER', 'mode': 'REQUIRED'},
+                        {'name': 'event_date', 'type': 'STRING', 'mode': 'REQUIRED'},
                     ]
                 },
                 create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,

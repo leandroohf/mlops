@@ -9,6 +9,15 @@
   | ml training          |                    |                  |                   | out of scope        |
   | ml predictions       |                    |                  |                   | out of scope        |
 
+   * projects assets (BOM: Bil of materials)
+   | assets           | qtd | comm                           |
+   |------------------+-----+--------------------------------|
+   | pubsub           |   1 | 1 topic                        |
+   | dataset          |   1 |                                |
+   | tables           |   2 | raw and features               |
+   | storage service  |   1 | centralize but dufferent paths |
+   | cloud function   |   1 |                                |
+   | service accounts |   1 |                                |
 
     This project is a minimal learning prototype (MVP) that simulates inject
     sparse data from sensors using Google Cloud services. The goal is to:
@@ -71,19 +80,36 @@
 
     #+begin_src sh
       # NOTE: Environment setup
-      PROJECT_ID="mlops-project-id"
-      REGION="us-central1"
-      SA="service-account@mlops-project-id.iam.gserviceaccount.com"
-      BUCKET="gs://${PROJECT_ID}-project-bucket"
+      export PROJECT_ID="mlops-project-id"
+      export REGION="us-central1"
+      export SA="bike-share-job@${PROJECT_ID}.iam.gserviceaccount.com"
+      export BUCKET="gs://${PROJECT_ID}-bike-share-project-bucket"
 
-      PUBSUB_TOPIC="pubsub-topic"
-      SUBSCRIPTION="subscription"
+      export PUBSUB_TOPIC="projects/${PROJECT_ID}/topics/pubsub-sensor"
+      export SUBSCRIPTION="projects/${PROJECT_ID}/subscriptions/sensor-subscription"
 
       export RAW_EVENT_TABLE="${PROJECT_ID}.bike_streaming.raw_events"
 
-      # NOTE: for phase 2
+
+      # NOTE: for phase 2 n 3
       export FEATURES_TABLE="${PROJECT_ID}.bike_streaming.station_features"
-      export FEATURE_PROCEDURE_NAME="mlops-project-abacabb.bike_streaming.upsert_station_features"
+
+      # NOTE: Dataflow job name
+      export INJECT_SENSOR_DATA_JOB_NAME="bike-share-pubsub-to-raw-events-table" # NOTE: Unique among active jobs in the same region
+      export FEATURE_ENGINEERING_JOB_NAME="bike-share-raw-events-table-to-features-table"
+
+      # NOTE: show me dont tell me
+      echo "PROJECT_ID=${PROJECT_ID}"
+      echo "REGION=${REGION}"
+      echo "SA=${SA}"
+      echo "BUCKET=${BUCKET}"
+      echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
+      echo "SUBSCRIPTION=${SUBSCRIPTION}"
+      echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
+      echo "FEATURES_TABLE=${FEATURES_TABLE}"
+      echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
+      echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
+      echo "GOOGLE_APPLICATION_CREDENTIAL=${GOOGLE_APPLICATION_CREDENTIAL}"
     #+end_src
 
   * Creating table
@@ -97,7 +123,8 @@
         station_id STRING,
         ts_iso TIMESTAMP,
         kind STRING,
-        delta INT64
+        delta INT64,
+        event_date  DATE
       )"
 
       # NOTE: checking datasets tables were created
@@ -144,10 +171,20 @@
 
       # NOTE: listing and deleting subscriptions
       gcloud pubsub subscriptions list --project="$PROJECT_ID"
+
       gcloud pubsub subscriptions delete $SUBSCRIPTION --project="$PROJECT_ID"
 
 
-      # NOTE: how to run and test up to now
+      # NOTE: make sure the script sensor.py has the right permission
+      # 1) create the key for service account
+      #    This allow you run locally using the sa
+      gcloud iam service-accounts keys create ~/bike-share-job-key.json \
+             --iam-account=$SA
+
+      # 2) set env to use the the key
+      export GOOGLE_APPLICATION_CREDENTIALS=~/bike-share-job-key.json
+
+      # NOTE: run and test up to now
       python scripts/sensors.py
 
       # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
@@ -235,16 +272,29 @@
 * Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
 
 
- | what                 | frequency          | process duration | scope                   | changes                                  | comment                                |
- |----------------------+--------------------+------------------+-------------------------+------------------------------------------+----------------------------------------|
- | data ingestion       | close to real time | < 5 minutes      | simple with high volume | switched from Cloud Function -> Dataflow | data ingested as soon as created       |
- | features engineering | every 30 minutes   | < 15 minutes     | simple                  | new (not present in Phase 1)             |                                        |
- | ml training          | every 2 hour       | < 30 minutes     | one model for all data  | still out of scope                       |                                        |
- | ml predictions       | every 1 hour       | < 10 minutes     |                         | still out of scope                       | multiple runs due to changing features |
- * NOTEs:
-    * ml model training and prediction is out of the scope of this project
+  | what                 | frequency          | process duration | scope                                    | changes                                  | comment                                |
+  |----------------------+--------------------+------------------+------------------------------------------+------------------------------------------+----------------------------------------|
+  | data ingestion       | close to real time | < 5 minutes      | simple with high volume                  | switched from Cloud Function -> Dataflow | data ingested as soon as created       |
+  | features engineering | every 1 hour       | < 15 minutes     | simple. **min window lentgh 30 minutes** | new (not present in Phase 1)             | cloud function                         |
+  | ml training          | every 2 hour       | < 30 minutes     | one model for all data                   | still out of scope                       |                                        |
+  | ml predictions       | every 1 hour       | < 10 minutes     | synced with feature engineering          | still out of scope                       | multiple runs due to changing features |
+  * NOTEs:
+     * ml model training and prediction is out of the scope of this project
 
-     This is the second phase of our ingestion pipeline. In this version:
+   * projects assets (BOM: Bil of materials)
+   | assets                         | qtd | comm                                          |
+   |--------------------------------+-----+-----------------------------------------------|
+   | pubsub                         |   1 | 1 topic                                       |
+   | dataset                        |   1 |                                               |
+   | tables                         |   2 | raw and features                              |
+   | storage service                |   1 | centralize but dufferent paths                |
+   | cloud scheduler                |   1 | optional. wont be implemented in this project |
+   | dataflow jobs  stream pipeline |   1 | inject sensor dtaa i raw events table         |
+   | cloud function                 |   1 |                                               |
+   | service accounts               |   1 |                                               |
+
+
+ This is the second phase of our ingestion pipeline. In this version:
 
     * We simulate a continuous, high-frequency sensor stream.
     * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
@@ -263,14 +313,14 @@
       ```
     #+end_src
 
-    * The features are simple and wont take longer. ALso they are required every
+    * The features are simple and wont take longer. Also they are required every
       hour. We use a scheduler and cloud function to compute the features
-
 
 ** TOR: Dataflow Jobs (Apache Beam)
 
    PS: Shamelessly stolen from:
-   https://medium.com/@ofelipefernandez/project-processing-streaming-data-with-pub-sub-and-dataflow-631e6082c94d
+   * https://medium.com/@ofelipefernandez/project-processing-streaming-data-with-pub-sub-and-dataflow-631e6082c94d
+   * See: ../apache_beam_cheet_sheet.md
 
    Apache Beam is a unified programming model for building both batch and
    streaming data processing pipelines. It allows you to write code once and run
@@ -312,13 +362,24 @@
     ```
   #+end_src
 
+
+  * stream of data: PCollections
+    * sequency of dictionaries (not list) that can be processed sequential or in
+      parallel (distributed)
+
+      #+begin_src python
+        # NOTE: apache beam data process mental model
+        for row in PCollection:
+            process(row)  # row is a dict
+      #+end_src
+
 ** Setup the cloud dataflow (Apache beam)
 
     * env vars: We gonna use the same as before plus:
 
       #+begin_src sh
         # NOTE: Dataflow job name
-        JOB_NAME="bike-share-raw-events" # NOTE: Unique among active jobs in the same region
+        INJECT_SENSOR_DATA_JOB_NAME="bike-share-raw-events" # NOTE: Unique among active jobs in the same region
       #+end_src
 
     * Cloud dataflow
@@ -332,10 +393,17 @@
            gcloud services enable \
                   dataflow.googleapis.com --project="$PROJECT_ID"
 
-
+           # NOTE: give permissions
+           # 1) Allows a running Dataflow job to access resources
            gcloud projects add-iam-policy-binding "$PROJECT_ID" \
                   --member="serviceAccount:$SA" \
                   --role="roles/dataflow.worker"
+
+
+           # 2) creating, updating and launching jobs
+           gcloud projects add-iam-policy-binding $PROJECT_ID \
+                  --member="serviceAccount:$SA" \
+                  --role="roles/dataflow.developer"
 
 
            # NOTE: delete the cloud function. We dont want trigger them in this phase
@@ -344,8 +412,8 @@
                   --gen2 \
                   -q
 
-           # NOTE: Create run dataflow template job (GOOD FOR QUICK TESTING. START WITH THIS THEN SWITCH TO APACHE BEAM CODE)
-           gcloud dataflow jobs run "$JOB_NAME" \
+           # NOTE: Create run dataflow TEMPLATE job (GOOD FOR QUICK TESTING. START WITH THIS THEN SWITCH TO APACHE BEAM CODE)
+           gcloud dataflow jobs run "$INJECT_SENSOR_DATA_JOB_NAME" \
                   --gcs-location "gs://dataflow-templates-$REGION/latest/PubSub_Subscription_to_BigQuery" \
                   --region "$REGION" \
                   --staging-location "$BUCKET/staging" \
@@ -376,7 +444,7 @@
 
            # NOTE: how to stop job or drain
            gcloud dataflow jobs cancel 2025-11-15_17_21_13-13963551468804225520 --region=us-central1
-           gcloud dataflow jobs drain  --region "$REGION" --job="$JOB_NAME"  # NOTE: drain = graceful stop
+           gcloud dataflow jobs drain  --region "$REGION" --job="$INJECT_SENSOR_DATA_JOB_NAME"  # NOTE: drain = graceful stop
 
            # NOTE: for debug (but better use the webui)
            # NOTE: seeing logs of an execution
@@ -390,8 +458,7 @@
 
          #+begin_src sh
            # NOTE: submitt apache beam job to dataflow
-           python scripts/create_apache_beam_stream_pipe.py &
-
+           python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
 
            # NOTE: inspect and verify jobs
            gcloud dataflow jobs list --region "$REGION"
@@ -550,26 +617,37 @@
 
 * Phase 3: Scalable Pipeline
 
-  | what                 | frequency          | process duration        | scope                       | changes                                       | description                                |
-  |----------------------+--------------------+-------------------------+-----------------------------+-----------------------------------------------+--------------------------------------------|
-  | data ingestion       | close to real time | < 5 minutes             | simple with high volume     | same ingestion pattern, higher global scale   | data are ingested as soon as it is created |
-  | features engineering | every 25 minutes   | < 1h                    | complex                     | upgraded from simple -> complex + higher freq |                                            |
-  | ml training          | every 2 hour       | < 1h                    | one model per region        | switched from 1 global model -> per region    | 1 model per city/region                    |
-  | ml predictions       | every 25 minutes   | < 20 minutes per region | per region for next 3 hours | higher frequency + regionalized predictions   |                                            |
-  * NOTEs:
-    * regions can be: 1 city (moderate size), a group of city (for small cities)
-      or neighborhoods for large cities
-    * For simplicty we gonna treat a region as a city
-    * ml model training and prediction is out of the scope of this project
+   | what                 | frequency          | process duration        | scope                                     | changes                                       | description                                |
+   |----------------------+--------------------+-------------------------+-------------------------------------------+-----------------------------------------------+--------------------------------------------|
+   | data ingestion       | close to real time | < 5 minutes             | simple with high volume                   | same ingestion pattern, higher global scale   | data are ingested as soon as it is created |
+   | features engineering | every 25 minutes   | < 1h                    | complex. **min window lentgh 30 minutes** | upgraded from simple -> complex + higher freq |                                            |
+   | ml training          | every 2 hour       | < 1h                    | one model per region                      | switched from 1 global model -> per region    | 1 model per city/region                    |
+   | ml predictions       | every 25 minutes   | < 20 minutes per region | per region for next 3 hours               | higher frequency + regionalized predictions   |                                            |
+   * NOTEs:
+     * regions can be: 1 city (moderate size), a group of city (for small cities)
+       or neighborhoods for large cities
+     * For simplicty we gonna treat a region as a city
+     * ml model training and prediction is out of the scope of this project
 
-  In Phase 3 we have the qreuirments that project grew up to different
+   * projects assets (BOM: Bil of materials)
+   | assets                               | qtd | comm                                          |
+   |--------------------------------------+-----+-----------------------------------------------|
+   | pubsub                               |   1 | 1 topic                                       |
+   | dataset                              |   1 |                                               |
+   | tables                               |   2 | raw and features                              |
+   | storage service                      |   1 | centralize but dufferent paths                |
+   | dataflow jobs  stream/batch pipeline |   2 | inject and feature engineering                |
+   | cloud scheduler                      |   1 | optional. wont be implemented in this project |
+   | service accounts                     |   1 |                                               |
+
+  In Phase 3 we have the requirments that project grew up to different
   locations, cities and countries and the feature engineering are more complex
-  and requireed to higher frequency than before (TODO define this parameters)
+  and required to higher frequency than before.
 
    For most of the cities parttioning the raw_events table and features tables
    by day will be enough, but for large cities like New York, Sao Paulo and
-   London the partitioning by date wont be enough.Because of this cases we will
-   cluster the tables by station_id and citties.
+   London the partitioning by date wont be enough. Because of this cases we will
+   cluster the tables by station_id and cities.
 
    Here is an summary of the requirements:
 
@@ -580,10 +658,45 @@
      * partition by day
      * clustered by station_id and cities
 
+    #+begin_src markdown
+      ```mermaid
+      flowchart TD
+
+        %% Streaming Ingestion
+        subgraph "Streaming Ingestion (Real-time)"
+          UserClient["Sensor Script (sensors.py)"] --> PubSub["> Pub/Sub Topic\n(pubsub-sensor)"]
+          PubSub --> StreamJob["Dataflow Job (Streaming)\ncreate_apache_beam_stream_pubsub_to_raw_events.py"]
+          StreamJob --> BQRaw["BigQuery Table\nbike_streaming.raw_events"]
+        end
+
+        %% Scheduled Batch Feature Engineering
+        subgraph "Batch Feature Engineering (Scheduled)"
+          CloudScheduler["Cloud Scheduler\n(every 15–60 min)"] --> TriggerBatch["Trigger Batch Job"]
+          TriggerBatch --> BatchJob["Dataflow Job (Batch)\ncreate_apache_beam_batch_raw_events_to_features.py"]
+          BatchJob --> BQFeatures["BigQuery Table\nbike_streaming.station_features"]
+          BatchJob --> GCSDebug2["GCS Bucket\nfeature-debug/"]
+        end
+
+        %% Styling
+        classDef bq fill:#E4F1FB,stroke:#333,stroke-width:1px;
+        classDef gcs fill:#FFF4E6,stroke:#d18,stroke-width:1px;
+        classDef df fill:#DFFFD6,stroke:#333,stroke-width:1px;
+        classDef pubsub fill:#FFF9C4,stroke:#999,stroke-width:1px;
+        classDef scheduler fill:#F0E5FF,stroke:#845EC2,stroke-width:1px;
+
+        class PubSub pubsub;
+        class StreamJob,BatchJob df;
+        class BQRaw,BQFeatures bq;
+        class GCSDebug2,GCS gcs;
+        class CloudScheduler,scheduler scheduler;
+      ```
+    #+end_src
+
    GOAL:
      * db should be scalable
      * features engineering should be scalable (dataflow as batch)
        * replace cloud function by dataflow batch
+
 
      * Create the raw_events and station_features table
        * we decide to partitioning raw events table for quick ingestion and also
@@ -609,7 +722,7 @@
             ts_iso TIMESTAMP,
             kind STRING,
             delta INT64,
-            event_date DATE GENERATED ALWAYS AS (DATE(ts_iso)) STORED -- NOTE: STORED = materialized (not virtuak) column (required for partitioning)
+            event_date DATE
           )
           PARTITION BY event_date
           "
@@ -624,8 +737,7 @@
             window_len STRING,
             value FLOAT64,
             as_of TIMESTAMP,
-            -- NOTE: STORED = materialized (not virtuak) column (required for partitioning)
-            event_date DATE GENERATED ALWAYS AS (DATE(as_of)) STORED
+            event_date DATE
           )
           PARTITION BY event_date
           CLUSTER BY city_id, station_id; -- NOTE: like sorting by city first, then by station_id within each city
@@ -645,3 +757,125 @@
            - Feature logic becomes complex (Python, joins, custom rules)
            - Data scale increases beyond 10–50M rows
          - Use Dataflow (Apache Beam) as scalable backend
+
+       + Creating apache beam batch pipeline
+
+         + as opposed to stream pipeline that is always running, this one must
+           be triggered manually or by cloud scheduler
+
+          #+begin_src sh
+            # NOTE: run the batch apache beam batch pipeline
+            # TODO: Parei aqui.
+            # preciso adicionar argumentos usando typer
+            # default current time but the args is useful for re processing
+            # NOTE: local run
+            python scripts/run_apache_beam_batch_raw_events_to_features.py
+
+
+            # NOTE: run google cloud
+            python scripts/run_apache_beam_batch_raw_events_to_features.py --runner="DataflowRunner" --run-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          #+end_src
+
+     * Checking infrastructure
+
+         #+begin_src sh
+           # NOTE: show me dont tell me
+           echo "PROJECT_ID=${PROJECT_ID}"
+           echo "REGION=${REGION}"
+           echo "SA=${SA}"
+           echo "BUCKET=${BUCKET}"
+           echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
+           echo "SUBSCRIPTION=${SUBSCRIPTION}"
+           echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
+           echo "FEATURES_TABLE=${FEATURES_TABLE}"
+           echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
+           echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
+
+           # NOTE: checking db
+           bq ls $PRJECT_ID:bike_streaming
+           # tableId        Type    Labels      Time Partitioning       Clustered Fields
+           # ------------------ ------- -------- ------------------------- ---------------------
+           # raw_events         TABLE            DAY (field: event_date)
+           # station_features   TABLE            DAY (field: event_date)   city_id, station_id
+
+           bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
+           bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+
+           # NOTE: checking pubsub
+           gcloud pubsub topics list --project="$PROJECT_ID"
+           gcloud pubsub subscriptions list --project="$PROJECT_ID"
+
+           # NOTE: checking SA permissions
+           gcloud iam service-accounts list --project=mlops-project-abacabb
+           gcloud projects get-iam-policy "${PROJECT_ID}" \
+                  --flatten="bindings[].members" \
+                  --filter="bindings.members:serviceAccount:${SA}" \
+                  --format="table(bindings.role)"
+
+           # NOTE: add required permissions
+           gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+                  --member="serviceAccount:${SA}" \
+                  --role="roles/bigquery.jobUser"
+
+
+           # NOTE: re start apache beam job INJECT_SENSOR_DATA_JOB_NAME
+           python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
+
+           # NOTE: checking dataflow
+           gcloud dataflow jobs list --region "$REGION"
+           JOB_ID=2025-11-15_16_52_15-3602385465536419454
+           gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
+         #+end_src
+
+     * run from you laptop locally
+
+       #+begin_src sh
+         # NOTE: run
+         pypython scripts/run_apache_beam_batch_raw_events_to_features.py \
+                  --runner=DataflowRunner \
+                  --run-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+         # NOTE: this creates 3 files per run on the staging buckets:
+         gsutil ls -lh "${BUCKET}/bike_stream/staging/**"
+         gsutil ls -lh "${BUCKET}/bike_stream/staging/beamapp-leandrofernandes-1222041732-758158-j24fym5s.1766377052.758245/**"
+
+         # 1) pipeline.pb: protobuffer file representing the pipeline. (contains the serialized Beam pipeline definition / job graph)
+         # 2) submission_environment_dependencies.txt: with python version, python packages. (snapshot of the environment used to submit)
+         # 3) workflow.tar.gz: the code repo zipped. staged source distribution of your code (the stuff built from setup.py)
+       #+end_src
+
+     * Optional: delete audit/debug files under run/ after 14 days
+
+       * create the file: lifecycle.json (age on days):
+
+         #+begin_src json
+           {
+               "rule": [
+                   {
+                       "action": {"type": "Delete"},
+                       "condition": {
+                           "age": 7,
+                           "matchesPrefix": ["run/"]
+                       }
+                   }
+               ]
+           }
+         #+end_src
+
+       * Apply it to the bucket:
+
+         #+begin_src sh
+           gsutil lifecycle set lifecycle.json $BUCKET
+         #+end_src
+
+
+
+
+** How to test
+
+    #+begin_src sh
+      # NOTE: run feature engineering pipeline with fake data
+      # Do NOT insert in FEATURES_TABLE
+      python tests/test_feature_logic.py
+    #+end_src
+
