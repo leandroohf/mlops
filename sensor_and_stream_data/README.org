@@ -98,6 +98,10 @@
       export INJECT_SENSOR_DATA_JOB_NAME="bike-share-pubsub-to-raw-events-table" # NOTE: Unique among active jobs in the same region
       export FEATURE_ENGINEERING_JOB_NAME="bike-share-raw-events-table-to-features-table"
 
+      export REGISTRY="bike-share"
+      export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REGISTRY}/df-launcher:latest"
+
+
       # NOTE: show me dont tell me
       echo "PROJECT_ID=${PROJECT_ID}"
       echo "REGION=${REGION}"
@@ -110,6 +114,8 @@
       echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
       echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
       echo "GOOGLE_APPLICATION_CREDENTIAL=${GOOGLE_APPLICATION_CREDENTIAL}"
+      echo "REGISTRY=${REGISTRY}"
+      echo "IMAGE=${IMAGE}"
     #+end_src
 
   * Creating table
@@ -827,13 +833,27 @@
            gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
          #+end_src
 
-     * run from you laptop locally
+     * run locally (read and save on db on cloud)
 
        #+begin_src sh
          # NOTE: run
-         pypython scripts/run_apache_beam_batch_raw_events_to_features.py \
-                  --runner=DataflowRunner \
-                  --run-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+         # 1) as test (read from sjon file)
+         python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                --runner=test --run-timestamp=2025-12-13
+
+         ls data/*.json
+
+         # 2) locally. run job locally but read and write on db on goodle cloud
+         # also save csv loaded data for debug
+         python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                --runner=DirectRunner
+
+         ls data/*.csv
+
+         # 3) run job on datacloud
+         python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                --runner=DataflowRunner
+
 
          # NOTE: this creates 3 files per run on the staging buckets:
          gsutil ls -lh "${BUCKET}/bike_stream/staging/**"
@@ -868,8 +888,153 @@
            gsutil lifecycle set lifecycle.json $BUCKET
          #+end_src
 
+     * setup cloud scheduler
+
+       * set docker images
+
+         #+begin_src sh
+           # NOTE: setup docke registry
+           gcloud artifacts repositories create "${REGISTRY}" \
+                  --repository-format=docker \
+                  --location="${REGION}" \
+                  --project="${PROJECT_ID}" \
+                  --description="Images for dataflow jobs"
 
 
+           # 1) Inspect all registry in the project
+           gcloud artifacts repositories list \
+                  --project="$PROJECT_ID" \
+                  --filter='format=DOCKER' \
+                  --format="table(name,location,createTime)"
+
+           # NOTE: build the image
+           # 1) google cloud
+           gcloud builds submit --tag "${IMAGE}" .
+
+           # 2) local
+           docker build -t ${IMAGE} .
+           docker images
+
+           # 3) verify code inside docker image
+           docker run --rm --entrypoint ls ${IMAGE} -la /app
+           docker run --rm --entrypoint ls ${IMAGE} -la /app/common_pipelines
+
+           # 4) check pyton path
+           docker run --rm --entrypoint python ${IMAGE} -c "import sys; print(sys.path)"
+           docker run --rm --entrypoint ls ${IMAGE} -la /app/data/*
+           docker run --rm --entrypoint cat ${IMAGE}  /app/data/features.json
+
+           docker run --rm -it \
+                  -e PROJECT_ID="$PROJECT_ID" \
+                  -e REGION="$REGION" \
+                  -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" \
+                  -e FEATURES_TABLE="$FEATURES_TABLE" \
+                  -e BUCKET="$BUCKET" \
+                  --entrypoint /bin/bash \
+                  ${IMAGE}
+
+           # NOTE: push the image
+           docker push ${IMAGE}
+
+           # 2) list all docerk images
+           gcloud artifacts docker images list \
+                  "$REGION-docker.pkg.dev/$PROJECT_ID/$REGISTRY" \
+                  --format="table(package,updateTime)"
+
+
+         #+end_src
+
+       * set cloud job
+
+         #+begin_src sh
+           # NOTE: create the cloud scheduler
+           # 1) create cloud job. This will run quickly and just start the dataflow job
+           # defined by the script: scripts/run_apache_beam_batch_raw_events_to_features.py
+           gcloud run jobs create update-station-features-launcher \
+                  --image="${IMAGE}" \
+                  --region="${REGION}" \
+                  --project="${PROJECT_ID}" \
+                  --service-account="${SA}" \
+                  --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},RAW_EVENT_TABLE=${RAW_EVENT_TABLE},FEATURES_TABLE=${FEATURES_TABLE},BUCKET=${BUCKET}"
+
+           # 1.1.) list all jobs
+           gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
+
+
+           # 1.2) check the service account
+           gcloud run jobs describe update-station-features-launcher \
+                    --region="${REGION}" \
+                    --project="${PROJECT_ID}" \
+                    --format="value(spec.template.spec.template.spec.serviceAccountName)"
+
+           # 1.3) test an execution
+           gcloud run jobs execute update-station-features-launcher
+
+
+           # NOTE: review and add notes here regards permissions and authentications.
+           # When running cloud jobs it will run with the permissions of the service
+           # accounts passed on creation time and it will be able to authenticate using
+           # this service account for runn the dataflow jobs. NO need to worry about
+           # athentictaion only when running form docker from local laptop
+
+           # NOTE: start dataflow job from runner docker conatiner
+           echo $GOOGLE_APPLICATION_CREDENTIALS
+           docker run --rm \
+             -v "$GOOGLE_APPLICATION_CREDENTIALS:/tmp/key.json:ro" \
+             -e GOOGLE_APPLICATION_CREDENTIALS="/tmp/key.json" \
+             -e PROJECT_ID="$PROJECT_ID" -e REGION="$REGION" \
+             -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" -e FEATURES_TABLE="$FEATURES_TABLE" \
+             -e BUCKET="$BUCKET" \
+             "${IMAGE}" --runner=DataflowRunner
+
+           # inspect clud jobs
+           gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
+
+           # inspect dataflow jobs
+           gcloud dataflow jobs list --region="$REGION" --project="$PROJECT_ID"
+         #+end_src
+
+       * set the scheduler
+
+           #+begin_src sh
+             # NOTE: schedule every 10 minutes
+             gcloud scheduler jobs create http update-station-features-job \
+                    --schedule="*/10 * * * *" \
+                    --http-method=POST \
+                    --uri=${URI} \
+                    --message-body="{}" \
+                    --time-zone="America/Los_Angeles" \
+                    --location=${REGION}
+
+             gcloud run jobs create update-station-features-launcher \
+                    --image="${IMAGE}" \
+                    --region="${REGION}" \
+                    --project="${PROJECT_ID}" \
+                    --service-account="${LAUNCHER_SA}" \
+                    --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},RAW_EVENT_TABLE=${RAW_EVENT_TABLE},FEATURES_TABLE=${FEATURES_TABLE},BUCKET=${BUCKET}"
+
+
+             # NOTE: inspect
+             gcloud scheduler jobs list --location=$REGION
+             gcloud scheduler jobs describe update-station-features-job --location=$REGION
+
+             # NOTE: test solution
+
+             # 0) make sure dataflow is running
+             gcloud dataflow jobs list --region "$REGION"
+             # 1) inspect the state of features table
+             bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+             # 2) run sensor
+             python scripts/sensors.py
+             # 3): manually trigger the job
+             gcloud scheduler jobs run update-station-features-job --location=${REGION}
+
+
+           #+end_src
+
+
+
+         
 
 ** How to test
 
@@ -879,3 +1044,4 @@
       python tests/test_feature_logic.py
     #+end_src
 
+    

@@ -120,6 +120,7 @@ def main(
     typer.echo(f"Running with timestamp: {run_timestamp}")
     typer.echo(f"Using runner: {runner}")
     run_features_engineering_pipeline(run_timestamp, runner=runner)
+    typer.echo("Pipeline execution completed.")
 
 if __name__ == '__main__':
     app()
