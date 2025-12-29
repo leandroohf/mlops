@@ -2,11 +2,25 @@
 from datetime import datetime
 import json
 import os
+import sys
 import apache_beam as beam
 
 RAW_EVENT_TABLE = os.getenv('RAW_EVENT_TABLE', '')
 
-from datetime import datetime, timezone
+import logging
+log_level = os.getenv("LOG_LEVEL", "INFO")
+
+from datetime import timezone
+
+
+class LogAndFlushFn(beam.DoFn):
+    def __init__(self, run_ts: str):
+        self.run_ts = run_ts
+
+    def process(self, count):
+        logging.info(f"Raw events read at {self.run_ts} (UTC): {count or 0}")
+        sys.stdout.flush()
+        yield count
 
 def _to_event_timestamp(ts):
 
@@ -75,4 +89,12 @@ def get_load_pipeline(p: beam.Pipeline, runner: str) ->  beam.PCollection:
     # NOTE: add event-time timestamps (dicts preserved) Always add timestamps
     raw_events = _add_event_timestamps(raw_events)
 
+    # NOTE: Log number of raw events (prod safe)
+    # if PCollection is empty, count will be None
+    run_ts = datetime.utcnow().replace(microsecond=0).isoformat()
+    _ = (
+        raw_events
+        | "CountRawEvents" >> beam.combiners.Count.Globally()
+        | "LogRawEventsCount" >> beam.ParDo(LogAndFlushFn(run_ts))
+    )
     return raw_events

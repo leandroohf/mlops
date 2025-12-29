@@ -1,4 +1,5 @@
-# Dockerfile
+#FROM python:3.11-alpine
+#ENTRYPOINT ["/bin/sh"]
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -15,7 +16,10 @@ COPY . /app
 RUN pip install --no-cache-dir -e /app
 
 RUN chmod +x /app/scripts/run_apache_beam_batch_raw_events_to_features.py
+RUN chmod +x /app/entry_point.sh 
 
 # NOTE: Default: submit Dataflow job
-ENTRYPOINT ["python", "scripts/run_apache_beam_batch_raw_events_to_features.py"]
+#ENTRYPOINT ["/bin/sh", "/app/entry_point.sh"]
+ENTRYPOINT ["python", "scripts/run_apache_beam_batch_raw_events_to_features.py", "--runner=DataflowRunner"]
 CMD ["--runner=DataflowRunner"]
+

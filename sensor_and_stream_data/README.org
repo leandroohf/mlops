@@ -646,9 +646,9 @@
    | cloud scheduler                      |   1 | optional. wont be implemented in this project |
    | service accounts                     |   1 |                                               |
 
-  In Phase 3 we have the requirments that project grew up to different
-  locations, cities and countries and the feature engineering are more complex
-  and required to higher frequency than before.
+   In Phase 3 we have the requirments that project grew up to different
+   locations, cities and countries and the feature engineering are more complex
+   and required to higher frequency than before.
 
    For most of the cities parttioning the raw_events table and features tables
    by day will be enough, but for large cities like New York, Sao Paulo and
@@ -703,7 +703,7 @@
      * features engineering should be scalable (dataflow as batch)
        * replace cloud function by dataflow batch
 
-
+   Implementation:
      * Create the raw_events and station_features table
        * we decide to partitioning raw events table for quick ingestion and also
          provide better reads
@@ -725,6 +725,7 @@
           CREATE TABLE IF NOT EXISTS \`${RAW_EVENT_TABLE}\` (
             event_id STRING,
             station_id STRING,
+            city_id STRING,
             ts_iso TIMESTAMP,
             kind STRING,
             delta INT64,
@@ -752,26 +753,19 @@
 
      * Features engineering
 
-       + Initial version: Cloud Run Job triggered by Cloud Scheduler (We won't
-         implement Cloud Run Job in this tutorial)
+       + Initial version: Cloud Run Job triggered by Cloud Scheduler
+
          - Suitable for BigQuery-based features
          - Handles up to ~10M rows per run
          - Simple to deploy and observe
 
-       + Planned migration path:
-         - Switch to Apache Beam when:
-           - Feature logic becomes complex (Python, joins, custom rules)
-           - Data scale increases beyond 10–50M rows
-         - Use Dataflow (Apache Beam) as scalable backend
-
-       + Creating apache beam batch pipeline
+       + Creating apache beam **BATCH** pipeline
 
          + as opposed to stream pipeline that is always running, this one must
            be triggered manually or by cloud scheduler
 
           #+begin_src sh
             # NOTE: run the batch apache beam batch pipeline
-            # TODO: Parei aqui.
             # preciso adicionar argumentos usando typer
             # default current time but the args is useful for re processing
             # NOTE: local run
@@ -782,243 +776,279 @@
             python scripts/run_apache_beam_batch_raw_events_to_features.py --runner="DataflowRunner" --run-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           #+end_src
 
-     * Checking infrastructure
-
-         #+begin_src sh
-           # NOTE: show me dont tell me
-           echo "PROJECT_ID=${PROJECT_ID}"
-           echo "REGION=${REGION}"
-           echo "SA=${SA}"
-           echo "BUCKET=${BUCKET}"
-           echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
-           echo "SUBSCRIPTION=${SUBSCRIPTION}"
-           echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
-           echo "FEATURES_TABLE=${FEATURES_TABLE}"
-           echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
-           echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
-
-           # NOTE: checking db
-           bq ls $PRJECT_ID:bike_streaming
-           # tableId        Type    Labels      Time Partitioning       Clustered Fields
-           # ------------------ ------- -------- ------------------------- ---------------------
-           # raw_events         TABLE            DAY (field: event_date)
-           # station_features   TABLE            DAY (field: event_date)   city_id, station_id
-
-           bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
-           bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
-
-           # NOTE: checking pubsub
-           gcloud pubsub topics list --project="$PROJECT_ID"
-           gcloud pubsub subscriptions list --project="$PROJECT_ID"
-
-           # NOTE: checking SA permissions
-           gcloud iam service-accounts list --project=mlops-project-abacabb
-           gcloud projects get-iam-policy "${PROJECT_ID}" \
-                  --flatten="bindings[].members" \
-                  --filter="bindings.members:serviceAccount:${SA}" \
-                  --format="table(bindings.role)"
-
-           # NOTE: add required permissions
-           gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-                  --member="serviceAccount:${SA}" \
-                  --role="roles/bigquery.jobUser"
-
-
-           # NOTE: re start apache beam job INJECT_SENSOR_DATA_JOB_NAME
-           python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
-
-           # NOTE: checking dataflow
-           gcloud dataflow jobs list --region "$REGION"
-           JOB_ID=2025-11-15_16_52_15-3602385465536419454
-           gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
-         #+end_src
-
-     * run locally (read and save on db on cloud)
-
-       #+begin_src sh
-         # NOTE: run
-         # 1) as test (read from sjon file)
-         python scripts/run_apache_beam_batch_raw_events_to_features.py \
-                --runner=test --run-timestamp=2025-12-13
-
-         ls data/*.json
-
-         # 2) locally. run job locally but read and write on db on goodle cloud
-         # also save csv loaded data for debug
-         python scripts/run_apache_beam_batch_raw_events_to_features.py \
-                --runner=DirectRunner
-
-         ls data/*.csv
-
-         # 3) run job on datacloud
-         python scripts/run_apache_beam_batch_raw_events_to_features.py \
-                --runner=DataflowRunner
-
-
-         # NOTE: this creates 3 files per run on the staging buckets:
-         gsutil ls -lh "${BUCKET}/bike_stream/staging/**"
-         gsutil ls -lh "${BUCKET}/bike_stream/staging/beamapp-leandrofernandes-1222041732-758158-j24fym5s.1766377052.758245/**"
-
-         # 1) pipeline.pb: protobuffer file representing the pipeline. (contains the serialized Beam pipeline definition / job graph)
-         # 2) submission_environment_dependencies.txt: with python version, python packages. (snapshot of the environment used to submit)
-         # 3) workflow.tar.gz: the code repo zipped. staged source distribution of your code (the stuff built from setup.py)
-       #+end_src
-
-     * Optional: delete audit/debug files under run/ after 14 days
-
-       * create the file: lifecycle.json (age on days):
-
-         #+begin_src json
-           {
-               "rule": [
-                   {
-                       "action": {"type": "Delete"},
-                       "condition": {
-                           "age": 7,
-                           "matchesPrefix": ["run/"]
-                       }
-                   }
-               ]
-           }
-         #+end_src
-
-       * Apply it to the bucket:
-
-         #+begin_src sh
-           gsutil lifecycle set lifecycle.json $BUCKET
-         #+end_src
-
-     * setup cloud scheduler
-
-       * set docker images
-
-         #+begin_src sh
-           # NOTE: setup docke registry
-           gcloud artifacts repositories create "${REGISTRY}" \
-                  --repository-format=docker \
-                  --location="${REGION}" \
-                  --project="${PROJECT_ID}" \
-                  --description="Images for dataflow jobs"
-
-
-           # 1) Inspect all registry in the project
-           gcloud artifacts repositories list \
-                  --project="$PROJECT_ID" \
-                  --filter='format=DOCKER' \
-                  --format="table(name,location,createTime)"
-
-           # NOTE: build the image
-           # 1) google cloud
-           gcloud builds submit --tag "${IMAGE}" .
-
-           # 2) local
-           docker build -t ${IMAGE} .
-           docker images
-
-           # 3) verify code inside docker image
-           docker run --rm --entrypoint ls ${IMAGE} -la /app
-           docker run --rm --entrypoint ls ${IMAGE} -la /app/common_pipelines
-
-           # 4) check pyton path
-           docker run --rm --entrypoint python ${IMAGE} -c "import sys; print(sys.path)"
-           docker run --rm --entrypoint ls ${IMAGE} -la /app/data/*
-           docker run --rm --entrypoint cat ${IMAGE}  /app/data/features.json
-
-           docker run --rm -it \
-                  -e PROJECT_ID="$PROJECT_ID" \
-                  -e REGION="$REGION" \
-                  -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" \
-                  -e FEATURES_TABLE="$FEATURES_TABLE" \
-                  -e BUCKET="$BUCKET" \
-                  --entrypoint /bin/bash \
-                  ${IMAGE}
-
-           # NOTE: push the image
-           docker push ${IMAGE}
-
-           # 2) list all docerk images
-           gcloud artifacts docker images list \
-                  "$REGION-docker.pkg.dev/$PROJECT_ID/$REGISTRY" \
-                  --format="table(package,updateTime)"
-
-
-         #+end_src
-
-       * set cloud job
-
-         #+begin_src sh
-           # NOTE: create the cloud scheduler
-           # 1) create cloud job. This will run quickly and just start the dataflow job
-           # defined by the script: scripts/run_apache_beam_batch_raw_events_to_features.py
-           gcloud run jobs create update-station-features-launcher \
-                  --image="${IMAGE}" \
-                  --region="${REGION}" \
-                  --project="${PROJECT_ID}" \
-                  --service-account="${SA}" \
-                  --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},RAW_EVENT_TABLE=${RAW_EVENT_TABLE},FEATURES_TABLE=${FEATURES_TABLE},BUCKET=${BUCKET}"
-
-           # 1.1.) list all jobs
-           gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
-
-
-           # 1.2) check the service account
-           gcloud run jobs describe update-station-features-launcher \
-                    --region="${REGION}" \
-                    --project="${PROJECT_ID}" \
-                    --format="value(spec.template.spec.template.spec.serviceAccountName)"
-
-           # 1.3) test an execution
-           gcloud run jobs execute update-station-features-launcher
-
-
-           # NOTE: review and add notes here regards permissions and authentications.
-           # When running cloud jobs it will run with the permissions of the service
-           # accounts passed on creation time and it will be able to authenticate using
-           # this service account for runn the dataflow jobs. NO need to worry about
-           # athentictaion only when running form docker from local laptop
-
-           # NOTE: start dataflow job from runner docker conatiner
-           echo $GOOGLE_APPLICATION_CREDENTIALS
-           docker run --rm \
-             -v "$GOOGLE_APPLICATION_CREDENTIALS:/tmp/key.json:ro" \
-             -e GOOGLE_APPLICATION_CREDENTIALS="/tmp/key.json" \
-             -e PROJECT_ID="$PROJECT_ID" -e REGION="$REGION" \
-             -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" -e FEATURES_TABLE="$FEATURES_TABLE" \
-             -e BUCKET="$BUCKET" \
-             "${IMAGE}" --runner=DataflowRunner
-
-           # inspect clud jobs
-           gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
-
-           # inspect dataflow jobs
-           gcloud dataflow jobs list --region="$REGION" --project="$PROJECT_ID"
-         #+end_src
-
-       * set the scheduler
+       + Checking infrastructure
 
            #+begin_src sh
-             # NOTE: schedule every 10 minutes
-             gcloud scheduler jobs create http update-station-features-job \
-                    --schedule="*/10 * * * *" \
-                    --http-method=POST \
-                    --uri=${URI} \
-                    --message-body="{}" \
-                    --time-zone="America/Los_Angeles" \
-                    --location=${REGION}
+             # NOTE: show me dont tell me
+             echo "PROJECT_ID=${PROJECT_ID}"
+             echo "REGION=${REGION}"
+             echo "SA=${SA}"
+             echo "BUCKET=${BUCKET}"
+             echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
+             echo "SUBSCRIPTION=${SUBSCRIPTION}"
+             echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
+             echo "FEATURES_TABLE=${FEATURES_TABLE}"
+             echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
+             echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
 
-             gcloud run jobs create update-station-features-launcher \
-                    --image="${IMAGE}" \
-                    --region="${REGION}" \
+             # NOTE: checking db
+             bq ls $PRJECT_ID:bike_streaming
+             # tableId        Type    Labels      Time Partitioning       Clustered Fields
+             # ------------------ ------- -------- ------------------------- ---------------------
+             # raw_events         TABLE            DAY (field: event_date)
+             # station_features   TABLE            DAY (field: event_date)   city_id, station_id
+
+             bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
+             bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+
+             # NOTE: checking pubsub
+             gcloud pubsub topics list --project="$PROJECT_ID"
+             gcloud pubsub subscriptions list --project="$PROJECT_ID"
+
+             # NOTE: checking SA permissions
+             gcloud iam service-accounts list --project=mlops-project-abacabb
+             gcloud projects get-iam-policy "${PROJECT_ID}" \
+                    --flatten="bindings[].members" \
+                    --filter="bindings.members:serviceAccount:${SA}" \
+                    --format="table(bindings.role)"
+
+             # NOTE: add required permissions
+             gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+                    --member="serviceAccount:${SA}" \
+                    --role="roles/bigquery.jobUser"
+
+
+             # NOTE: re start apache beam job INJECT_SENSOR_DATA_JOB_NAME
+             python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
+
+             # NOTE: checking dataflow
+             gcloud dataflow jobs list --region "$REGION"
+             JOB_ID=2025-11-15_16_52_15-3602385465536419454
+             gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
+           #+end_src
+
+       + run locally (read and save on db on cloud)
+
+         #+begin_src sh
+           # NOTE: run
+           # 1) as test (read from sjon file)
+           python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                  --runner=test --run-timestamp=2025-12-13
+
+           ls data/*.json
+
+           # 2) locally. run job locally but read and write on db on goodle cloud
+           # also save csv loaded data for debug
+           python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                  --runner=DirectRunner
+
+           ls data/*.csv
+
+           # 3) run job on datacloud
+           python scripts/run_apache_beam_batch_raw_events_to_features.py \
+                  --runner=DataflowRunner
+
+
+           # NOTE: this creates 3 files per run on the staging buckets:
+           gsutil ls -lh "${BUCKET}/bike_stream/staging/**"
+           gsutil ls -lh "${BUCKET}/bike_stream/staging/beamapp-leandrofernandes-1222041732-758158-j24fym5s.1766377052.758245/**"
+
+           # 1) pipeline.pb: protobuffer file representing the pipeline. (contains the serialized Beam pipeline definition / job graph)
+           # 2) submission_environment_dependencies.txt: with python version, python packages. (snapshot of the environment used to submit)
+           # 3) workflow.tar.gz: the code repo zipped. staged source distribution of your code (the stuff built from setup.py)
+         #+end_src
+
+       + Optional: delete audit/debug files under run/ after 14 days
+
+         * create the file: lifecycle.json (age on days):
+
+           #+begin_src json
+             {
+                 "rule": [
+                     {
+                         "action": {"type": "Delete"},
+                         "condition": {
+                             "age": 7,
+                             "matchesPrefix": ["run/"]
+                         }
+                     }
+                 ]
+             }
+           #+end_src
+
+         * Apply it to the bucket:
+
+           #+begin_src sh
+             gsutil lifecycle set lifecycle.json $BUCKET
+           #+end_src
+
+       + setup cloud scheduler
+
+         * set docker images
+
+           #+begin_src sh
+             # NOTE: setup docke registry
+             gcloud artifacts repositories create "${REGISTRY}" \
+                    --repository-format=docker \
+                    --location="${REGION}" \
                     --project="${PROJECT_ID}" \
-                    --service-account="${LAUNCHER_SA}" \
-                    --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},RAW_EVENT_TABLE=${RAW_EVENT_TABLE},FEATURES_TABLE=${FEATURES_TABLE},BUCKET=${BUCKET}"
+                    --description="Images for dataflow jobs"
+
+
+             # 1) Inspect all registry in the project
+             gcloud artifacts repositories list \
+                    --project="$PROJECT_ID" \
+                    --filter='format=DOCKER' \
+                    --format="table(name,location,createTime)"
+
+             # NOTE: build the image
+             # 1) google cloud
+             gcloud builds submit --tag "${IMAGE}" .
+
+             # 2) local
+             # linux
+             docker build -t ${IMAGE} .
+
+             # mac arch arm64 need to build the image for target arch: amd64 (x86_64)
+             docker buildx build \
+                      --platform=linux/amd64 \
+                      -t ${IMAGE} \
+                      --push \
+                      .
+
+             docker images
+
+             # good idea to inspect the image and the arch it was built
+             docker inspect ${IMAGE}
+
+             # 3) verify code inside docker image
+             docker run --rm --entrypoint ls ${IMAGE} -la /app
+             docker run --rm --entrypoint ls ${IMAGE} -la /app/common_pipelines
+
+             # 4) check pyton path
+             docker run --rm --entrypoint python ${IMAGE} -c "import sys; print(sys.path)"
+             docker run --rm --entrypoint ls ${IMAGE} -la /app/data/*
+             docker run --rm --entrypoint cat ${IMAGE}  /app/data/features.json
+
+             docker run --rm -it \
+                    -e PROJECT_ID="$PROJECT_ID" \
+                    -e REGION="$REGION" \
+                    -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" \
+                    -e FEATURES_TABLE="$FEATURES_TABLE" \
+                    -e BUCKET="$BUCKET" \
+                    --entrypoint /bin/bash \
+                    ${IMAGE}
+
+             docker run --rm  \
+                    -e PROJECT_ID="$PROJECT_ID" \
+                    -e REGION="$REGION" \
+                    -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" \
+                    -e FEATURES_TABLE="$FEATURES_TABLE" \
+                    -e BUCKET="$BUCKET" \
+                    -e SA="$SA" \
+                    ${IMAGE}
+
+             # NOTE: start dataflow job from runner docker container
+             echo $GOOGLE_APPLICATION_CREDENTIALS
+             docker run --rm \
+                    -v "$GOOGLE_APPLICATION_CREDENTIALS:/tmp/key.json:ro" \
+                    -e GOOGLE_APPLICATION_CREDENTIALS="/tmp/key.json" \
+                    -e PROJECT_ID="$PROJECT_ID" -e REGION="$REGION" \
+                    -e RAW_EVENT_TABLE="$RAW_EVENT_TABLE" -e FEATURES_TABLE="$FEATURES_TABLE" \
+                    -e BUCKET="$BUCKET" \
+                    "${IMAGE}" --runner=DataflowRunner
+
+             # NOTE: push the image
+             docker push ${IMAGE}
+
+             # 2) list all docerk images
+             gcloud artifacts docker images list \
+                    "$REGION-docker.pkg.dev/$PROJECT_ID/$REGISTRY" \
+                    --format="table(package,updateTime)"
+           #+end_src
+
+         * set cloud job
+
+           #+begin_src sh
+             # NOTE: create the cloud scheduler
+             # 1) create cloud job. This will run quickly and just start the dataflow job
+
+             # 1.0) defined by the script: scripts/run_apache_beam_batch_raw_events_to_features.py
+             gcloud run jobs create update-station-features-launcher \
+               --image="${IMAGE}" \
+               --region="${REGION}" \
+               --project="${PROJECT_ID}" \
+               --service-account="${SA}" \
+               --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},RAW_EVENT_TABLE=${RAW_EVENT_TABLE},FEATURES_TABLE=${FEATURES_TABLE},BUCKET=${BUCKET},SA=${SA},FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
+
+             # 1.1.) list all jobs
+             gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
+
+             # 1.2) check the service account and permissions and docker registry
+             gcloud artifacts repositories describe "$REGISTRY" \
+                      --location="$REGION" --project="$PROJECT_ID"
+
+             gcloud run jobs describe update-station-features-launcher \
+                      --region="${REGION}" \
+                      --project="${PROJECT_ID}" \
+                      --format="value(spec.template.spec.template.spec.serviceAccountName)"
+
+             # NOTE: review and add notes here regards permissions and authentications.
+             # When running cloud jobs it will run with the permissions of the service
+             # accounts passed on creation time and it will be able to authenticate using
+             # this service account for runn the dataflow jobs. NO need to worry about
+             # athentictaion only when running form docker from local laptop
+             gcloud projects get-iam-policy "$PROJECT_ID" \
+                      --flatten="bindings[].members" \
+                      --filter="bindings.members:serviceAccount:${SA} AND bindings.role:roles/artifactregistry" \
+                      --format="table(bindings.role,bindings.members)"
+
+             # 1.3) test an execution
+             gcloud run jobs execute update-station-features-launcher \
+                    --region="${REGION}" \
+                    --project="${PROJECT_ID}"
+             # us-central1-docker.pkg.dev/mlops-project-abacabb/bike-share/df-launcher:latest
+
+             # 1.4) inspect cloud jobs
+             gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
+
+             # inspect dataflow jobs
+             gcloud dataflow jobs list --region="$REGION" --project="$PROJECT_ID"
+
+             gcloud run jobs executions describe beamapp-root-1224230338-785453-hn2iadmz update-station-features-launcher-jdzqn \
+                    --project="$PROJECT_ID" \
+                    --region="$REGION" \
+                    --format="value(status.conditions[0].type,status.conditions[0].status,status.completionTime,status.failedCount,status.succeededCount)"
+           #+end_src
+
+         * set the scheduler
+
+           #+begin_src sh
+             # NOTE: schedule every N minutes
+             ENDPOINT="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/update-station-features-launcher:run"
+
+             TOKEN=$(gcloud auth print-access-token)
+
+             echo "ENDPOINT: ${ENDPOINT}"
+             curl -X POST "$ENDPOINT" \
+                  -H "Authorization: Bearer $TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -d '{}'
+
+             gcloud scheduler jobs create http update-station-features-job \
+                    --schedule="*/25 * * * *" \
+                    --http-method=POST \
+                    --uri="${ENDPOINT}" \
+                    --oauth-service-account-email="${SA}" \
+                    --time-zone="America/Los_Angeles" \
+                    --location="${REGION}" \
+                    --message-body="{}"
 
 
              # NOTE: inspect
              gcloud scheduler jobs list --location=$REGION
+             # get info for last run
              gcloud scheduler jobs describe update-station-features-job --location=$REGION
-
-             # NOTE: test solution
 
              # 0) make sure dataflow is running
              gcloud dataflow jobs list --region "$REGION"
@@ -1028,13 +1058,7 @@
              python scripts/sensors.py
              # 3): manually trigger the job
              gcloud scheduler jobs run update-station-features-job --location=${REGION}
-
-
-           #+end_src
-
-
-
-         
+             #+end_src
 
 ** How to test
 

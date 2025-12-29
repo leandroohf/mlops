@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 import json
 import os
-import sys
 from typing import Optional
 import uuid
 
@@ -22,10 +21,7 @@ log_level = os.getenv("LOG_LEVEL", "INFO")
 # Set up the logger
 # logger.remove()  # Remove any previously added sinks
 # logger.add(sys.stdout, level=log_level)
-
-
-app = typer.Typer()
-
+app = typer.Typer(pretty_exceptions_enable=False)
 
 PROJECT_ID = os.getenv('PROJECT_ID', '')
 
@@ -37,6 +33,7 @@ assert 'gs://' in BUCKET, "BUCKET must be a GCS path starting with 'gs://'"
 
 DATAFLOW_SERVICE_ACCOUNT = os.getenv('SA', '')
 FEATURE_JOB_NAME = os.getenv("FEATURE_ENGINEERING_JOB_NAME")
+
 
 def run_features_engineering_pipeline(run_ts: str, runner="DirectRunner"):
 
@@ -119,6 +116,11 @@ def main(
     # 2) Code is uploaded to staging bucket
     typer.echo(f"Running with timestamp: {run_timestamp}")
     typer.echo(f"Using runner: {runner}")
+    typer.echo(f"Project ID: {PROJECT_ID}")
+    typer.echo(f"Raw Event Table: {RAW_EVENT_TABLE}")
+    typer.echo(f"Features Table: {FEATURES_TABLE}")
+    typer.echo(f"GCS Bucket: {BUCKET}")
+    typer.echo(f'dataflow service account: {DATAFLOW_SERVICE_ACCOUNT}')
     run_features_engineering_pipeline(run_timestamp, runner=runner)
     typer.echo("Pipeline execution completed.")
 

@@ -1,13 +1,26 @@
 import json
 import os
+import sys
 
 import apache_beam as beam
 from apache_beam.pvalue import PCollection
 
 from typing import Dict, Any, List
 
+import logging
+log_level = os.getenv("LOG_LEVEL", "INFO")
+
 
 FEATURES_TABLE = os.getenv('FEATURES_TABLE', '')
+
+class LogAndFlushFn(beam.DoFn):
+    def __init__(self, run_ts: str):
+        self.run_ts = run_ts
+
+    def process(self, count):
+        logging.info(f"Raw events read at {self.run_ts} (UTC): {count or 0}")
+        sys.stdout.flush()
+        yield count
 
 class RunMergeFn(beam.DoFn):
 
@@ -31,15 +44,15 @@ class RunMergeFn(beam.DoFn):
         temp_table = self.feature_table + "_temp_" + uuid.uuid4().hex[:8]
 
         # NOTE: Upload batched features from json to temp table
-        job = client.load_table_from_json(elements, temp_table)
+        load_job = client.load_table_from_json(elements, temp_table)
         # NOTE: Blocks execution until the load job finishes (either success or failure).
-        job.result()
+        load_job.result()
 
-        print(f"[DEBUG] Job ID: {job.job_id}")
-        print(f"[DEBUG] Job State: {job.state}")
-        print(f"[DEBUG] Output rows: {job.output_rows}")
-        print(f"[DEBUG] Expected Number of rows to upload: {len(elements)}")
-        print(f"[DEBUG] Creating temporary table: {temp_table}")
+        logging.info(f"Job ID: {load_job.job_id}")
+        logging.info(f"Job State: {load_job.state}")
+        logging.info(f"Output rows: {load_job.output_rows}")
+        logging.info(f"Expected input size: {len(elements)}")
+        logging.info(f"Creating temporary table: {temp_table}")
 
         # NOTE: Updates (Upsert) features table from temp table
         merge_sql = f"""
@@ -55,9 +68,21 @@ class RunMergeFn(beam.DoFn):
             INSERT (station_id, feature_name, window_len, value, as_of)
             VALUES (S.station_id, S.feature_name, S.window_len, S.value, S.as_of)
         """
-        client.query(merge_sql).result()
+        # client.query(merge_sql).result()
+        merge_job = client.query(merge_sql)
+        # NOTE: wait/block until the job finishes (required)
+        merge_job.result() # <= blocks until done
 
+        # NOTE: Access number of affected rows (inserted + updated)
+        affected_rows = merge_job.num_dml_affected_rows
+        logging.info(f"Merge Job ID: {merge_job.job_id}")
+        logging.info(f"Number of affected rows by MERGE: {affected_rows}")
+
+        logging.info(f"Temporary table {temp_table} merged into {self.feature_table}. Deleting temp table...")
         client.delete_table(temp_table, not_found_ok=True)
+
+        logging.info(f"MERGE completed from {temp_table} to {self.feature_table}")
+        sys.stdout.flush()
 
         yield "merge_success"
 
@@ -81,6 +106,14 @@ def get_store_pipeline(grouped: PCollection[List[Dict[str, Any]]],
         )
 
     def _write_bq(pcoll: PCollection) -> PCollection:
+
+        # NOTE: Log number of feature records processed
+        # _ = (
+        #     pcoll
+        #     | "CountFeaturesUpserted" >> beam.combiners.Count.Globally()
+        #     | "LogFeatureUpserts" >> beam.Map(lambda count: logging.info(f"Features upserted: {count}"))
+        # )
+
         # NOTE: Run MERGE for each batch and update feature table in BigQuery
         return pcoll | "RunMERGE" >> beam.ParDo(RunMergeFn(FEATURES_TABLE))
 

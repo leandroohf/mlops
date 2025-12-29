@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from google.cloud import pubsub_v1
 
 
+CITY_ID = "C_001"
 STATIONS = ["A_101", "A_205", "A_310"]
 KINDS = ["pickup", "dropoff"]
 
@@ -31,6 +32,7 @@ def generate_event(event_counter: int) -> dict:
     return {
         "event_id": event_id,
         "station_id": station_id,
+        "city_id": CITY_ID,
         "ts_iso": ts_iso,
         "kind": kind,
         "delta": delta,
