@@ -680,15 +680,15 @@
      * ml model training and prediction is out of the scope of this project
 
    * projects assets (BOM: Bil of materials)
-   | assets                               | qtd | comm                                          |
-   |--------------------------------------+-----+-----------------------------------------------|
-   | pubsub                               |   1 | 1 topic                                       |
-   | dataset                              |   1 |                                               |
-   | tables                               |   2 | raw and features                              |
-   | storage service                      |   1 | centralize but dufferent paths                |
-   | dataflow jobs  stream/batch pipeline |   2 | inject and feature engineering                |
-   | cloud scheduler                      |   1 | optional. wont be implemented in this project |
-   | service accounts                     |   1 |                                               |
+   | assets                               | qtd | comm                                                          |
+   |--------------------------------------+-----+---------------------------------------------------------------|
+   | pubsub                               |   1 | 1 topic                                                       |
+   | dataset                              |   1 |                                                               |
+   | tables                               |   2 | raw and features                                              |
+   | storage service                      |   1 | centralize but dufferent paths                                |
+   | dataflow jobs  stream/batch pipeline |   2 | inject and feature engineering                                |
+   | cloud scheduler                      |   1 | optional: can be replaced by astronome/airflow if get complex |
+   | service accounts                     |   1 |                                                               |
 
    In Phase 3 we have the requirments that project grew up to different
    locations, cities and countries and the feature engineering are more complex
