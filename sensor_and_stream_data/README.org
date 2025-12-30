@@ -49,12 +49,13 @@
      from Pub/Sub.
 
      * Optimized (Simple) for fast inserts; avoids redundancy
+       * event_id is unique per event
 
-        | event_id | station_id | ts_iso               | kind    | delta |
-        |----------+------------+----------------------+---------+-------|
-        | e-90001  | A_101      | 2025-10-18T16:24:11Z | pickup  |     1 |
-        | e-90002  | A_101      | 2025-10-18T16:24:44Z | dropoff |     1 |
-        | e-90003  | A_205      | 2025-10-18T16:25:02Z | pickup  |     1 |
+          | event_id | station_id | ts_iso               | kind    | delta |
+          |----------+------------+----------------------+---------+-------|
+          | e-90001  | A_101      | 2025-10-18T16:24:11Z | pickup  |     1 |
+          | e-90002  | A_101      | 2025-10-18T16:24:44Z | dropoff |     1 |
+          | e-90003  | A_205      | 2025-10-18T16:25:02Z | pickup  |     1 |
 
   2. **Feature Events Table** (`station_features`): Reserved for future use by a
      feature computation function, not used in this MVP.
@@ -113,7 +114,7 @@
       echo "FEATURES_TABLE=${FEATURES_TABLE}"
       echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
       echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
-      echo "GOOGLE_APPLICATION_CREDENTIAL=${GOOGLE_APPLICATION_CREDENTIAL}"
+      echo "GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}"
       echo "REGISTRY=${REGISTRY}"
       echo "IMAGE=${IMAGE}"
     #+end_src
@@ -138,14 +139,14 @@
       bq ls --project_id=$PROJECT_ID
 
       # list all tables in datasets
-      bq ls $PRJECT_ID:bike_streaming
+      bq ls $PROJECT_ID:bike_streaming
       tableId        Type    Labels   Time Partitioning   Clustered Fields
       ------------------ ------- -------- ------------------- ------------------
       raw_events         TABLE
       station_features   TABLE
 
       # delete table
-      bq rm -f -t $PRJECT_ID:bike_streaming.events
+      bq rm -f -t $PROJECT_ID:bike_streaming.events
 
     #+end_src
 
@@ -277,50 +278,77 @@
 
 * Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
 
+  This phase upgrades the MVP (Phase 1) to support *high-volume streaming
+  ingestion* using *Cloud Dataflow (Apache Beam)*, while keeping feature
+  computation as a *scheduled job* using *Cloud Scheduler → HTTP Cloud Function →
+  BigQuery upsert*.
 
-  | what                 | frequency          | process duration | scope                                    | changes                                  | comment                                |
-  |----------------------+--------------------+------------------+------------------------------------------+------------------------------------------+----------------------------------------|
-  | data ingestion       | close to real time | < 5 minutes      | simple with high volume                  | switched from Cloud Function -> Dataflow | data ingested as soon as created       |
-  | features engineering | every 1 hour       | < 15 minutes     | simple. **min window lentgh 30 minutes** | new (not present in Phase 1)             | cloud function                         |
-  | ml training          | every 2 hour       | < 30 minutes     | one model for all data                   | still out of scope                       |                                        |
-  | ml predictions       | every 1 hour       | < 10 minutes     | synced with feature engineering          | still out of scope                       | multiple runs due to changing features |
+  - Ingestion: near real-time, scalable, fault-tolerant
+  - Feature Engineering: scheduled (e.g., every 30–60 min), simple aggregations
+  - ML training/prediction: out of scope
+
+  | what                 | frequency          | process duration | scope                                | changes                             | comment                                   |
+  |----------------------+--------------------+------------------+--------------------------------------+-------------------------------------+-------------------------------------------|
+  | data ingestion       | close to real time | < 5 minutes      | simple with high volume              | switched Cloud Function -> Dataflow | streaming job always listening to Pub/Sub |
+  | features engineering | every 1 hour       | < 15 minutes     | simple. min window length 30 minutes | new in Phase 2                      | Cloud Scheduler triggers HTTP Cloud Fn    |
+  | ml training          | every 2 hours      | < 30 minutes     | one model for all data               | out of scope                        |                                           |
+  | ml predictions       | every 1 hour       | < 10 minutes     | synced with feature engineering      | out of scope                        |                                           |
   * NOTEs:
-     * ml model training and prediction is out of the scope of this project
+    * ml model training and prediction is out of the scope of this project
 
-   * projects assets (BOM: Bil of materials)
-   | assets                         | qtd | comm                                          |
-   |--------------------------------+-----+-----------------------------------------------|
-   | pubsub                         |   1 | 1 topic                                       |
-   | dataset                        |   1 |                                               |
-   | tables                         |   2 | raw and features                              |
-   | storage service                |   1 | centralize but dufferent paths                |
-   | cloud scheduler                |   1 | optional. wont be implemented in this project |
-   | dataflow jobs  stream pipeline |   1 | inject sensor dtaa i raw events table         |
-   | cloud function                 |   1 |                                               |
-   | service accounts               |   1 |                                               |
+  * projects assets (BOM: Bil of materials)
+   | assets                      | qty | comments                                                    |
+   |-----------------------------+-----+-------------------------------------------------------------|
+   | Pub/Sub topic               |   1 | input event stream (sensor events)                          |
+   | Pub/Sub subscription        |   1 | Dataflow reads from subscription                            |
+   | BigQuery dataset            |   1 | bike_streaming                                              |
+   | BigQuery tables             |   2 | raw_events (ingested), station_features (computed features) |
+   | GCS bucket                  |   1 | Dataflow staging/tmp + optional debug outputs               |
+   | Dataflow job (streaming)    |   1 | Pub/Sub -> BigQuery raw_events                              |
+   | Cloud Function (HTTP, gen2) |   1 | compute features + upsert into BigQuery station_features    |
+   | Cloud Scheduler             |   1 | triggers Cloud Function periodically                        |
+   | Service account(s)          |   1 | used by Dataflow + Scheduler/Function (or separate SAs)     |
 
+   In Phase 2:
 
- This is the second phase of our ingestion pipeline. In this version:
+    1. We simulate a continuous/high-frequency sensor stream (sensors.py).
+    2. Pub/Sub acts as the ingestion buffer.
+    3. A *streaming Dataflow job* consumes Pub/Sub messages and writes raw events
+       into BigQuery `raw_events`.
+    4. A *Cloud Scheduler* triggers an *HTTP Cloud Function* periodically to compute
+       simple aggregations and *upsert* features into BigQuery `station_features`.
 
-    * We simulate a continuous, high-frequency sensor stream.
-    * We replace the Cloud Function with Cloud Dataflow (Apache Beam).
-    * This enables scalable data injection and fault-tolerant processing of
-      Pub/Sub messages into BigQuery.
-    * We also introduce a feature computation layer to aggregate raw events into
-      useful features. In this phase it is not necessary to scale because the
-      features are simple and not required often.
+    This design matches a common production pattern:
+    * Dataflow handles scaling + reliability for streaming ingestion.
+    * Feature computation is scheduled when features are only needed
+      periodically and are cheap to compute.
 
-    #+begin_src markdown
-      ```mermaid
-      flowchart TD
-        A[Sensor Data] --> B[Pub/Sub Topic]
-        B --> C[Dataflow Job #1<br>Raw Events → BigQuery: raw_events]
-        C --> D[Dataflow Job #2 or Batch SQL<br>Aggregations → station_features]
-      ```
-    #+end_src
+     #+begin_src text
+       sensors.py --> Pub/Sub Topic --> Dataflow (stream) --> BigQuery.raw_events
+                                              |
+                                              v
+                              Cloud Scheduler --> Cloud Function (HTTP) --> BigQuery.station_features
+       #+end_src
 
-    * The features are simple and wont take longer. Also they are required every
-      hour. We use a scheduler and cloud function to compute the features
+       #+begin_src markdown
+       ```mermaid
+       flowchart TD
+         A[Sensor Script (sensors.py)] --> B[Pub/Sub Topic]
+         B --> C[Dataflow Streaming Job<br/>Pub/Sub -> BigQuery raw_events]
+         C --> D[BigQuery: raw_events]
+
+         E[Cloud Scheduler<br/>every 30-60 min] --> F[Cloud Function (HTTP, gen2)<br/>compute + upsert features]
+         F --> G[BigQuery: station_features]
+      #+end_src
+
+    * Notes / Clarifications
+
+      - The ingestion path is fully streaming and scales via Dataflow.
+
+      - Feature computation is scheduled (not streaming) because:
+        - features are needed every N minutes, not continuously
+        - computations are simple and cost-effective in BigQuery
+      - ML training and prediction remain out of scope for this project phase.
 
 ** TOR: Dataflow Jobs (Apache Beam)
 
@@ -501,7 +529,7 @@
           A_101      | is_peak_station    | all_time   | 1.0   | 2025-11-16 02:15:00
 
           # NOTE: list all tables
-          bq ls $PRJECT_ID:bike_streaming
+          bq ls $PROJECT_ID:bike_streaming
         #+end_src
 
         * Pros:
@@ -703,7 +731,59 @@
      * features engineering should be scalable (dataflow as batch)
        * replace cloud function by dataflow batch
 
+     * Checking infrastructure
+
+         #+begin_src sh
+           # NOTE: show me dont tell me
+           echo "PROJECT_ID=${PROJECT_ID}"
+           echo "REGION=${REGION}"
+           echo "SA=${SA}"
+           echo "BUCKET=${BUCKET}"
+           echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
+           echo "SUBSCRIPTION=${SUBSCRIPTION}"
+           echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
+           echo "FEATURES_TABLE=${FEATURES_TABLE}"
+           echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
+           echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
+
+           # NOTE: checking db
+           bq ls $PROJECT_ID:bike_streaming
+           # tableId        Type    Labels      Time Partitioning       Clustered Fields
+           # ------------------ ------- -------- ------------------------- ---------------------
+           # raw_events         TABLE            DAY (field: event_date)
+           # station_features   TABLE            DAY (field: event_date)   city_id, station_id
+
+           bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
+           bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
+
+           # NOTE: checking pubsub
+           gcloud pubsub topics list --project="$PROJECT_ID"
+           gcloud pubsub subscriptions list --project="$PROJECT_ID"
+
+           # NOTE: checking SA permissions
+           gcloud iam service-accounts list --project=mlops-project-abacabb
+           gcloud projects get-iam-policy "${PROJECT_ID}" \
+                  --flatten="bindings[].members" \
+                  --filter="bindings.members:serviceAccount:${SA}" \
+                  --format="table(bindings.role)"
+
+           # NOTE: add required permissions
+           gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+                  --member="serviceAccount:${SA}" \
+                  --role="roles/bigquery.jobUser"
+
+
+           # NOTE: re start apache beam job INJECT_SENSOR_DATA_JOB_NAME
+           python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
+
+           # NOTE: checking dataflow
+           gcloud dataflow jobs list --region "$REGION"
+           JOB_ID=2025-11-15_16_52_15-3602385465536419454
+           gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
+         #+end_src
+
    Implementation:
+
      * Create the raw_events and station_features table
        * we decide to partitioning raw events table for quick ingestion and also
          provide better reads
@@ -712,7 +792,7 @@
 
         #+begin_src sh
           # NOTE: list all tables
-          bq ls $PRJECT_ID:bike_streaming
+          bq ls $PROJECT_ID:bike_streaming
 
           # NOTE: delete old tables
           bq rm -f "${RAW_EVENT_TABLE}"
@@ -775,57 +855,6 @@
             # NOTE: run google cloud
             python scripts/run_apache_beam_batch_raw_events_to_features.py --runner="DataflowRunner" --run-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           #+end_src
-
-       + Checking infrastructure
-
-           #+begin_src sh
-             # NOTE: show me dont tell me
-             echo "PROJECT_ID=${PROJECT_ID}"
-             echo "REGION=${REGION}"
-             echo "SA=${SA}"
-             echo "BUCKET=${BUCKET}"
-             echo "PUBSUB_TOPIC=${PUBSUB_TOPIC}"
-             echo "SUBSCRIPTION=${SUBSCRIPTION}"
-             echo "RAW_EVENT_TABLE=${RAW_EVENT_TABLE}"
-             echo "FEATURES_TABLE=${FEATURES_TABLE}"
-             echo "INJECT_SENSOR_DATA_JOB_NAME=${INJECT_SENSOR_DATA_JOB_NAME}"
-             echo "FEATURE_ENGINEERING_JOB_NAME=${FEATURE_ENGINEERING_JOB_NAME}"
-
-             # NOTE: checking db
-             bq ls $PRJECT_ID:bike_streaming
-             # tableId        Type    Labels      Time Partitioning       Clustered Fields
-             # ------------------ ------- -------- ------------------------- ---------------------
-             # raw_events         TABLE            DAY (field: event_date)
-             # station_features   TABLE            DAY (field: event_date)   city_id, station_id
-
-             bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
-             bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
-
-             # NOTE: checking pubsub
-             gcloud pubsub topics list --project="$PROJECT_ID"
-             gcloud pubsub subscriptions list --project="$PROJECT_ID"
-
-             # NOTE: checking SA permissions
-             gcloud iam service-accounts list --project=mlops-project-abacabb
-             gcloud projects get-iam-policy "${PROJECT_ID}" \
-                    --flatten="bindings[].members" \
-                    --filter="bindings.members:serviceAccount:${SA}" \
-                    --format="table(bindings.role)"
-
-             # NOTE: add required permissions
-             gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-                    --member="serviceAccount:${SA}" \
-                    --role="roles/bigquery.jobUser"
-
-
-             # NOTE: re start apache beam job INJECT_SENSOR_DATA_JOB_NAME
-             python scripts/create_apache_beam_stream_pubsub_to_raw_events.py &
-
-             # NOTE: checking dataflow
-             gcloud dataflow jobs list --region "$REGION"
-             JOB_ID=2025-11-15_16_52_15-3602385465536419454
-             gcloud dataflow jobs describe "$JOB_ID" --region="$REGION"
-           #+end_src
 
        + run locally (read and save on db on cloud)
 
@@ -1007,7 +1036,6 @@
              gcloud run jobs execute update-station-features-launcher \
                     --region="${REGION}" \
                     --project="${PROJECT_ID}"
-             # us-central1-docker.pkg.dev/mlops-project-abacabb/bike-share/df-launcher:latest
 
              # 1.4) inspect cloud jobs
              gcloud run jobs list --project="$PROJECT_ID" --region="$REGION"
@@ -1024,7 +1052,23 @@
          * set the scheduler
 
            #+begin_src sh
-             # NOTE: schedule every N minutes
+             # NOTE: add permission to SA trigger jobs
+             gcloud iam service-accounts list --project=mlops-project-abacabb
+             gcloud projects get-iam-policy "${PROJECT_ID}" \
+                    --flatten="bindings[].members" \
+                    --filter="bindings.members:serviceAccount:${SA}" \
+                    --format="table(bindings.role)"
+
+             gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+                    --member="serviceAccount:${SA}" \
+                    --role="roles/run.admin"
+
+
+             gcloud projects add-iam-policy-binding mlops-project-abacabb \
+                    --member="serviceAccount:${SA}" \
+                    --role="roles/iam.serviceAccountUser"
+
+             # NOTE: triger with curl
              ENDPOINT="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/update-station-features-launcher:run"
 
              TOKEN=$(gcloud auth print-access-token)
@@ -1035,15 +1079,17 @@
                   -H "Content-Type: application/json" \
                   -d '{}'
 
-             gcloud scheduler jobs create http update-station-features-job \
-                    --schedule="*/25 * * * *" \
+
+             # NOTE: schedule every N minutes
+             # needs oauth not OIDC Token
+             gcloud scheduler jobs create http update-station-features-scheduler \
+                    --schedule="*/20 * * * *" \
                     --http-method=POST \
                     --uri="${ENDPOINT}" \
-                    --oauth-service-account-email="${SA}" \
                     --time-zone="America/Los_Angeles" \
                     --location="${REGION}" \
+                    --oauth-service-account-email="${SA}" \
                     --message-body="{}"
-
 
              # NOTE: inspect
              gcloud scheduler jobs list --location=$REGION
