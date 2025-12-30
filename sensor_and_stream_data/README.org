@@ -1,5 +1,21 @@
 
-* Phase 1: Project Overview: MVP for Sensor Data Ingestion
+* Project Introduction: Sensor Data Ingestion -> Features
+
+  This project is a learning prototype that simulates *bike-station sensor
+  events* (pickups/dropoffs) and builds a cloud-native pipeline on Google Cloud.
+
+  The project is intentionally structured in *three phases* so we can start with
+  the simplest working system (MVP), then progressively improve *scalability*
+  and *operational robustness* as the requirements grow.
+
+  The long-term goal is to support a full ML system (features → training →
+  predictions), but in this project we focus mainly on:
+  - ingesting sensor data reliably
+  - storing raw events
+  - computing features on a schedule
+  - preparing the architecture for larger scale
+
+** Phase 1: Project Overview: MVP for Sensor Data Ingestion
 
 
   | what                 | frequency          | process duration | scope             | Comment             |
@@ -32,7 +48,7 @@
     (via Dataflow or other tools), but this MVP focuses on establishing a
     reliable ingestion pipeline.
 
-** Why Cloud Function?
+*** Why Cloud Function?
 
   + **Latency is not a concern** at this stage, as sensor data is sparse and
     events do not arrive in high bursts.
@@ -41,7 +57,7 @@
   + This project is intentionally designed as an MVP. Later, we plan to switch
     to Cloud Dataflow for more scalable and complex processing.
 
-** BigQuery Tables schema
+*** BigQuery Tables schema
 
   Two tables are created for this MVP:
 
@@ -69,13 +85,13 @@
         | A_101      | avg_delta_pickup | 24h        |   3.2 | 2025-11-16 02:15:00 |
         | A_101      | is_peak_station  | all_time   |   1.0 | 2025-11-16 02:15:00 |
 
-** Architecture Diagram (Text Description)
+*** Architecture Diagram (Text Description)
 
    #+BEGIN_SRC
    Sensor Simulator --> Pub/Sub Topic --> Cloud Function --> BigQuery (raw_events)
    #+END_SRC
 
-** Setup infrastructure
+*** Setup infrastructure
 
   * Env variables
 
@@ -248,7 +264,7 @@
              -q
     #+end_src
 
-** How to run and test
+*** How to run and test
 
 
    #+begin_src sh
@@ -276,7 +292,7 @@
      # +----------+------------+---------------------+---------+-------+
    #+end_src
 
-* Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
+** Phase 2: Scalable Ingestion Pipeline with Cloud Dataflow
 
   This phase upgrades the MVP (Phase 1) to support *high-volume streaming
   ingestion* using *Cloud Dataflow (Apache Beam)*, while keeping feature
@@ -350,7 +366,7 @@
         - computations are simple and cost-effective in BigQuery
       - ML training and prediction remain out of scope for this project phase.
 
-** TOR: Dataflow Jobs (Apache Beam)
+*** TOR: Dataflow Jobs (Apache Beam)
 
    PS: Shamelessly stolen from:
    * https://medium.com/@ofelipefernandez/project-processing-streaming-data-with-pub-sub-and-dataflow-631e6082c94d
@@ -407,7 +423,7 @@
             process(row)  # row is a dict
       #+end_src
 
-** Setup the cloud dataflow (Apache beam)
+*** Setup the cloud dataflow (Apache beam)
 
     * env vars: We gonna use the same as before plus:
 
@@ -503,7 +519,7 @@
            bq query --use_legacy_sql=false "SELECT * FROM \`$RAW_EVENT_TABLE\` ORDER BY ts_iso desc  LIMIT 10;"
          #+end_src
 
-** Features engineering
+*** Features engineering
 
     The features table change frequent because the ML models change often the
     features are used as input.
@@ -649,7 +665,7 @@
          bq query --use_legacy_sql=false "SELECT * FROM \`$FEATURES_TABLE\` ORDER BY as_of DESC;"
        #+end_src
 
-* Phase 3: Scalable Pipeline
+** Phase 3: Scalable Pipeline
 
    | what                 | frequency          | process duration        | scope                                     | changes                                       | description                                |
    |----------------------+--------------------+-------------------------+-------------------------------------------+-----------------------------------------------+--------------------------------------------|
@@ -1106,12 +1122,10 @@
              gcloud scheduler jobs run update-station-features-job --location=${REGION}
              #+end_src
 
-** How to test
+*** How to test
 
     #+begin_src sh
       # NOTE: run feature engineering pipeline with fake data
       # Do NOT insert in FEATURES_TABLE
       python tests/test_feature_logic.py
     #+end_src
-
-    
